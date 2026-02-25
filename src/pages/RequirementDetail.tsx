@@ -10,8 +10,10 @@ import { STATES, type StateKey } from "@/lib/constants";
 import { getNextStates, isTerminalState, isPathAssignmentRequired } from "@/lib/stateMachine";
 import PhaseFeedbackModal, { type FeedbackData } from "@/components/PhaseFeedbackModal";
 import PathAssignmentModal from "@/components/PathAssignmentModal";
+import DoETab from "@/components/DoETab";
+import CommitteeReviewPanel from "@/components/CommitteeReviewPanel";
 import { toast } from "@/hooks/use-toast";
-import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle, FlaskConical, Users } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface Requirement {
@@ -248,7 +250,13 @@ const RequirementDetail = () => {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="feedback">Feedback History ({feedbacks.length})</TabsTrigger>
+          <TabsTrigger value="feedback">Feedback ({feedbacks.length})</TabsTrigger>
+          <TabsTrigger value="doe" className="flex items-center gap-1.5">
+            <FlaskConical className="h-3 w-3" />DoE
+          </TabsTrigger>
+          <TabsTrigger value="committee" className="flex items-center gap-1.5">
+            <Users className="h-3 w-3" />Committee
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
@@ -423,6 +431,14 @@ const RequirementDetail = () => {
               );
             })
           )}
+        </TabsContent>
+
+        <TabsContent value="doe">
+          <DoETab requirementId={req.id} currentState={req.current_state} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="committee">
+          <CommitteeReviewPanel requirementId={req.id} currentState={req.current_state} isAdmin={isAdmin} />
         </TabsContent>
       </Tabs>
 

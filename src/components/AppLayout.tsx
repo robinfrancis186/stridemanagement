@@ -9,6 +9,7 @@ import {
   LogOut,
   Zap,
   User,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,7 @@ const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/requirements", icon: ListChecks, label: "Requirements" },
   { to: "/requirements/new", icon: Plus, label: "New Requirement" },
+  { to: "/analytics", icon: BarChart3, label: "Leadership Analytics" },
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {

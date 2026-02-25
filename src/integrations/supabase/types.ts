@@ -14,6 +14,162 @@ export type Database = {
   }
   public: {
     Tables: {
+      committee_decisions: {
+        Row: {
+          conditions: string | null
+          created_at: string
+          decided_by: string
+          decision: string
+          id: string
+          requirement_id: string
+          revision_instructions: string | null
+        }
+        Insert: {
+          conditions?: string | null
+          created_at?: string
+          decided_by: string
+          decision: string
+          id?: string
+          requirement_id: string
+          revision_instructions?: string | null
+        }
+        Update: {
+          conditions?: string | null
+          created_at?: string
+          decided_by?: string
+          decision?: string
+          id?: string
+          requirement_id?: string
+          revision_instructions?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "committee_decisions_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      committee_reviews: {
+        Row: {
+          conditions: string | null
+          cost_effectiveness_score: number | null
+          created_at: string
+          doe_results_score: number | null
+          feedback_text: string | null
+          id: string
+          recommendation: string | null
+          requirement_id: string
+          reviewer_id: string
+          safety_score: number | null
+          technical_feasibility_score: number | null
+          user_need_score: number | null
+          weighted_total: number | null
+        }
+        Insert: {
+          conditions?: string | null
+          cost_effectiveness_score?: number | null
+          created_at?: string
+          doe_results_score?: number | null
+          feedback_text?: string | null
+          id?: string
+          recommendation?: string | null
+          requirement_id: string
+          reviewer_id: string
+          safety_score?: number | null
+          technical_feasibility_score?: number | null
+          user_need_score?: number | null
+          weighted_total?: number | null
+        }
+        Update: {
+          conditions?: string | null
+          cost_effectiveness_score?: number | null
+          created_at?: string
+          doe_results_score?: number | null
+          feedback_text?: string | null
+          id?: string
+          recommendation?: string | null
+          requirement_id?: string
+          reviewer_id?: string
+          safety_score?: number | null
+          technical_feasibility_score?: number | null
+          user_need_score?: number | null
+          weighted_total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "committee_reviews_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      doe_records: {
+        Row: {
+          baseline_data: Json | null
+          beneficiary_feedback: string | null
+          beneficiary_profiles: Json | null
+          created_at: string
+          created_by: string | null
+          id: string
+          improvement_metrics: Json | null
+          post_test_data: Json | null
+          pre_test_data: Json | null
+          requirement_id: string
+          results_summary: string | null
+          sample_size: number | null
+          statistical_analysis: Json | null
+          testing_protocol: string | null
+          updated_at: string
+        }
+        Insert: {
+          baseline_data?: Json | null
+          beneficiary_feedback?: string | null
+          beneficiary_profiles?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          improvement_metrics?: Json | null
+          post_test_data?: Json | null
+          pre_test_data?: Json | null
+          requirement_id: string
+          results_summary?: string | null
+          sample_size?: number | null
+          statistical_analysis?: Json | null
+          testing_protocol?: string | null
+          updated_at?: string
+        }
+        Update: {
+          baseline_data?: Json | null
+          beneficiary_feedback?: string | null
+          beneficiary_profiles?: Json | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          improvement_metrics?: Json | null
+          post_test_data?: Json | null
+          pre_test_data?: Json | null
+          requirement_id?: string
+          results_summary?: string | null
+          sample_size?: number | null
+          statistical_analysis?: Json | null
+          testing_protocol?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "doe_records_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phase_feedbacks: {
         Row: {
           blockers_resolved: string[] | null
