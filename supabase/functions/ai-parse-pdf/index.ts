@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,15 +9,17 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { text } = await req.json();
-    if (!text) throw new Error("text content is required");
+    const body = await req.json();
+    const { text, base64, fileName, fileType } = body;
+
+    if (!text && !base64) throw new Error("Either text or base64 file content is required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
 
-Extract all identifiable requirements from the text. For each requirement, extract:
+Extract all identifiable requirements from the document. For each requirement, extract:
 - title: concise device/requirement name
 - description: detailed description
 - source_type: one of CDC, SEN, BLIND, ELDERLY, BUDS, OTHER
@@ -32,6 +33,25 @@ Extract all identifiable requirements from the text. For each requirement, extra
 
 Be thorough and extract every requirement you can identify.`;
 
+    // Build user message content - either text or multimodal with file
+    let userContent: any;
+
+    if (base64 && (fileType === "pdf" || fileType === "docx")) {
+      const mimeType = fileType === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      userContent = [
+        { type: "text", text: `Extract all requirements from this uploaded ${fileType.toUpperCase()} document.` },
+        {
+          type: "file",
+          file: {
+            filename: fileName || `document.${fileType}`,
+            file_data: `data:${mimeType};base64,${base64}`,
+          },
+        },
+      ];
+    } else {
+      userContent = `Extract requirements from this document text:\n\n${(text || "").slice(0, 15000)}`;
+    }
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -39,10 +59,10 @@ Be thorough and extract every requirement you can identify.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "google/gemini-2.5-flash",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Extract requirements from this document text:\n\n${text.slice(0, 15000)}` },
+          { role: "user", content: userContent },
         ],
         tools: [
           {
