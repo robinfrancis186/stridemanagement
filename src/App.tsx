@@ -10,6 +10,7 @@ import Dashboard from "@/pages/Dashboard";
 import Requirements from "@/pages/Requirements";
 import RequirementDetail from "@/pages/RequirementDetail";
 import NewRequirement from "@/pages/NewRequirement";
+import LeadershipDashboard from "@/pages/LeadershipDashboard";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ const App = () => (
             <Route path="/requirements" element={<ProtectedRoute><Requirements /></ProtectedRoute>} />
             <Route path="/requirements/new" element={<ProtectedRoute><NewRequirement /></ProtectedRoute>} />
             <Route path="/requirements/:id" element={<ProtectedRoute><RequirementDetail /></ProtectedRoute>} />
+            <Route path="/analytics" element={<ProtectedRoute><LeadershipDashboard /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
