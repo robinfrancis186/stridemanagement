@@ -67,9 +67,12 @@ const Auth = () => {
         }
       }
     } catch (error: any) {
+      const msg = error?.message === "Failed to fetch"
+        ? "Network error — please check your connection and try again."
+        : error?.message || "An error occurred";
       toast({
         title: "Error",
-        description: error.message,
+        description: msg,
         variant: "destructive",
       });
     } finally {
