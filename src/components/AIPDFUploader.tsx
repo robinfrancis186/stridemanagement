@@ -25,12 +25,26 @@ const AIPDFUploader = () => {
     setExtracted(null);
 
     try {
-      // Read file as text (for now, supports text-based content)
-      const text = await file.text();
-      
-      const { data, error } = await supabase.functions.invoke("ai-parse-pdf", {
-        body: { text },
-      });
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      let body: any;
+
+      if (ext === "pdf" || ext === "docx") {
+        // Read binary files as base64
+        const arrayBuffer = await file.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        const base64 = btoa(binary);
+        body = { base64, fileName: file.name, fileType: ext };
+      } else {
+        // Read text-based files directly
+        const text = await file.text();
+        body = { text };
+      }
+
+      const { data, error } = await supabase.functions.invoke("ai-parse-pdf", { body });
 
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -95,12 +109,12 @@ const AIPDFUploader = () => {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <input ref={fileInputRef} type="file" accept=".txt,.csv,.md,.json" className="hidden" onChange={handleFileSelect} />
+        <input ref={fileInputRef} type="file" accept=".txt,.csv,.md,.json,.pdf,.docx" className="hidden" onChange={handleFileSelect} />
         <Button onClick={() => fileInputRef.current?.click()} disabled={parsing} variant="outline" className="w-full">
           {parsing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
           {parsing ? "Parsing document..." : "Upload Document for AI Extraction"}
         </Button>
-        <p className="text-xs text-muted-foreground">Supports .txt, .csv, .md, .json files. AI will extract requirements automatically.</p>
+        <p className="text-xs text-muted-foreground">Supports .txt, .csv, .md, .json, .pdf, .docx files. AI will extract requirements automatically.</p>
 
         {extracted?.requirements && (
           <div className="space-y-3 mt-4">
