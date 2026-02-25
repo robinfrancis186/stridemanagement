@@ -1,12 +1,9 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
-import { Button } from "@/components/ui/button";
 import {
   LayoutDashboard,
   ListChecks,
   Plus,
-  LogOut,
   Zap,
   User,
   BarChart3,
@@ -28,7 +25,6 @@ const navItems = [
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
-  const { user, role, signOut } = useAuth();
   const location = useLocation();
 
   return (
@@ -75,20 +71,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-xs font-medium text-sidebar-foreground">
-                {user?.email}
+                Demo User
               </p>
               <p className="text-[10px] text-sidebar-foreground/50 uppercase tracking-wider">
-                {role?.replace("_", " ") || "No Role"}
+                COE ADMIN
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground"
-              onClick={signOut}
-            >
-              <LogOut className="h-3.5 w-3.5" />
-            </Button>
           </div>
         </div>
       </aside>
