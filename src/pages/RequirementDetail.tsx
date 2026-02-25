@@ -182,6 +182,18 @@ const RequirementDetail = () => {
     setFeedbackOpen(false);
     setSubmitting(false);
     fetchData(); // Refresh
+
+    // Auto-generate Device Documentation Package when reaching production-ready
+    if (toState === "H-DOE-5") {
+      toast({ title: "Generating Device Documentation", description: "AI is automatically generating the Device Documentation Package..." });
+      supabase.functions.invoke("ai-device-doc", { body: { requirementId: req.id } }).then(({ data, error }) => {
+        if (error || data?.error) {
+          toast({ title: "Auto Doc Generation Failed", description: error?.message || data?.error, variant: "destructive" });
+        } else {
+          toast({ title: "Device Documentation Ready", description: "AI has automatically generated the Device Documentation Package. Check the AI Actions panel to view it." });
+        }
+      });
+    }
   };
 
   return (
