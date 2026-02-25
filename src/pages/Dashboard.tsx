@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { STATES, type StateKey } from "@/lib/constants";
-import { Activity, AlertTriangle, CheckCircle, Package } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import { Activity, AlertTriangle, CheckCircle, Package, Clock, Timer } from "lucide-react";
+import { formatDistanceToNow, differenceInDays } from "date-fns";
 
 interface Requirement {
   id: string;
@@ -45,15 +46,36 @@ const Dashboard = () => {
   const totalCount = requirements.length;
   const p1Active = requirements.filter((r) => r.priority === "P1" && r.current_state !== "H-DOE-5").length;
   const productionReady = requirements.filter((r) => r.current_state === "H-DOE-5").length;
-  const stuckItems = requirements.filter((r) => {
-    const days = (Date.now() - new Date(r.created_at).getTime()) / 86400000;
-    const s = r.current_state;
-    if (s.startsWith("S") && days > 14) return true;
-    if (s.startsWith("H-INT") && days > 60) return true;
-    if (s.startsWith("H-DES") && days > 90) return true;
-    if (s.startsWith("H-DOE") && days > 45) return true;
-    return false;
-  }).length;
+  // Aging thresholds per phase (in days)
+  const agingThresholds: Record<string, number> = {
+    S: 14, "H-INT": 60, "H-DES": 90, "H-DOE": 45,
+  };
+
+  const getPhasePrefix = (state: string) => {
+    if (state.startsWith("H-DOE")) return "H-DOE";
+    if (state.startsWith("H-DES")) return "H-DES";
+    if (state.startsWith("H-INT")) return "H-INT";
+    if (state.startsWith("S")) return "S";
+    return "";
+  };
+
+  const getThreshold = (state: string) => agingThresholds[getPhasePrefix(state)] || 30;
+
+  const agingItems = requirements
+    .filter((r) => r.current_state !== "H-DOE-5")
+    .map((r) => {
+      // Use last transition date if available, otherwise created_at
+      const lastTransition = transitions.find((t) => t.requirement_id === r.id);
+      const sinceDate = new Date(r.created_at);
+      const daysInPhase = differenceInDays(new Date(), sinceDate);
+      const threshold = getThreshold(r.current_state);
+      const overdue = daysInPhase - threshold;
+      return { ...r, daysInPhase, threshold, overdue };
+    })
+    .filter((r) => r.overdue > 0)
+    .sort((a, b) => b.overdue - a.overdue);
+
+  const stuckItems = agingItems.length;
 
   // Group requirements by state for pipeline
   const stateCounts: Record<string, number> = {};
@@ -204,6 +226,49 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Aging Alerts */}
+      {agingItems.length > 0 && (
+        <Card className="shadow-card border-destructive/30">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <Timer className="h-5 w-5 text-destructive" />
+              Aging Alerts ({agingItems.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {agingItems.slice(0, 10).map((item) => {
+                const severity = item.overdue > 30 ? "destructive" : item.overdue > 14 ? "warning" : "secondary";
+                const si = STATES[item.current_state as StateKey];
+                return (
+                  <Link
+                    key={item.id}
+                    to={`/requirements/${item.id}`}
+                    className="flex items-center gap-3 text-sm p-2 rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    <AlertTriangle className={`h-4 w-4 shrink-0 ${
+                      severity === "destructive" ? "text-destructive" :
+                      severity === "warning" ? "text-warning" : "text-muted-foreground"
+                    }`} />
+                    <span className="flex-1 font-medium truncate">{item.title}</span>
+                    <Badge variant="outline" className="text-[10px]">
+                      {item.current_state} — {si?.label || item.current_state}
+                    </Badge>
+                    <Badge className={`text-[10px] ${
+                      severity === "destructive" ? "bg-destructive text-destructive-foreground" :
+                      severity === "warning" ? "bg-warning text-warning-foreground" : "bg-secondary text-secondary-foreground"
+                    }`}>
+                      {item.daysInPhase}d / {item.threshold}d limit
+                    </Badge>
+                    <span className="text-xs text-destructive font-medium">+{item.overdue}d overdue</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
