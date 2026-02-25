@@ -33,7 +33,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // Safety timeout — if nothing resolves in 3s, stop loading
+    // Immediately clear any corrupt/stale auth data that causes infinite retry loops
+    try {
+      const storageKey = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
+      if (storageKey) {
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          // If refresh token is very short or access token is missing, it's stale
+          if (!parsed?.access_token || !parsed?.refresh_token || parsed.refresh_token.length < 20) {
+            console.warn("Clearing stale auth token from localStorage");
+            localStorage.removeItem(storageKey);
+          }
+        }
+      }
+    } catch {
+      // If parsing fails, clear all sb auth keys
+      Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
+        .forEach(k => localStorage.removeItem(k));
+    }
+
     const timeout = setTimeout(() => {
       console.warn("Auth timeout — forcing loading=false");
       settle();
@@ -75,10 +94,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .catch(() => setRole(null));
       }
       settle();
-    }).catch((err) => {
+    }).catch((err: any) => {
       console.warn("getSession failed, clearing stale session:", err);
-      // Clear stale session data that causes infinite retry loops
       supabase.auth.signOut().catch(() => {});
+      // Force-clear localStorage to stop retry loops
+      Object.keys(localStorage).filter(k => k.startsWith('sb-'))
+        .forEach(k => localStorage.removeItem(k));
       settle();
     });
 
