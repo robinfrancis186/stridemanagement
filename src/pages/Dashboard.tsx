@@ -61,16 +61,27 @@ const Dashboard = () => {
 
   const getThreshold = (state: string) => agingThresholds[getPhasePrefix(state)] || 30;
 
+  // Fetch all transitions for accurate aging calculation
+  const [allTransitions, setAllTransitions] = useState<Transition[]>([]);
+
+  useEffect(() => {
+    const fetchAllTransitions = async () => {
+      const { data } = await supabase.from("state_transitions").select("*").order("created_at", { ascending: false });
+      setAllTransitions((data as Transition[]) || []);
+    };
+    fetchAllTransitions();
+  }, []);
+
   const agingItems = requirements
     .filter((r) => r.current_state !== "H-DOE-5")
     .map((r) => {
-      // Use last transition date if available, otherwise created_at
-      const lastTransition = transitions.find((t) => t.requirement_id === r.id);
-      const sinceDate = new Date(r.created_at);
+      // Use the most recent transition date for this requirement, otherwise fall back to created_at
+      const lastTransition = allTransitions.find((t) => t.requirement_id === r.id);
+      const sinceDate = lastTransition ? new Date(lastTransition.created_at) : new Date(r.created_at);
       const daysInPhase = differenceInDays(new Date(), sinceDate);
       const threshold = getThreshold(r.current_state);
       const overdue = daysInPhase - threshold;
-      return { ...r, daysInPhase, threshold, overdue };
+      return { ...r, daysInPhase, threshold, overdue, sinceDate };
     })
     .filter((r) => r.overdue > 0)
     .sort((a, b) => b.overdue - a.overdue);
@@ -228,15 +239,20 @@ const Dashboard = () => {
       </div>
 
       {/* Aging Alerts */}
-      {agingItems.length > 0 && (
-        <Card className="shadow-card border-destructive/30">
-          <CardHeader>
-            <CardTitle className="font-display text-lg flex items-center gap-2">
-              <Timer className="h-5 w-5 text-destructive" />
-              Aging Alerts ({agingItems.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card className={`shadow-card ${agingItems.length > 0 ? "border-destructive/30" : "border-success/30"}`}>
+        <CardHeader>
+          <CardTitle className="font-display text-lg flex items-center gap-2">
+            <Timer className={`h-5 w-5 ${agingItems.length > 0 ? "text-destructive" : "text-success"}`} />
+            Aging Alerts ({agingItems.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {agingItems.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-success">
+              <CheckCircle className="h-4 w-4" />
+              <span>All requirements are within acceptable phase timelines.</span>
+            </div>
+          ) : (
             <div className="space-y-2">
               {agingItems.slice(0, 10).map((item) => {
                 const severity = item.overdue > 30 ? "destructive" : item.overdue > 14 ? "warning" : "secondary";
@@ -266,9 +282,9 @@ const Dashboard = () => {
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
