@@ -7,6 +7,7 @@ import { STATES, type StateKey, SOURCE_TYPES } from "@/lib/constants";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { format } from "date-fns";
 import { Calendar, Package, TrendingUp, DollarSign } from "lucide-react";
+import AIReportGenerator from "@/components/AIReportGenerator";
 
 interface Requirement {
   id: string;
@@ -134,6 +135,9 @@ const MonthlyReport = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* AI Report Generator */}
+      <AIReportGenerator month={selectedMonth} />
 
       {/* Aging Alerts */}
       <Card className="shadow-card">
