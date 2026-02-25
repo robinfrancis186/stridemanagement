@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
 import Auth from "@/pages/Auth";
+import ResetPassword from "@/pages/ResetPassword";
 import Dashboard from "@/pages/Dashboard";
 import Requirements from "@/pages/Requirements";
 import RequirementDetail from "@/pages/RequirementDetail";
@@ -42,6 +43,7 @@ const App = () => (
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<AuthRoute><Auth /></AuthRoute>} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/requirements" element={<ProtectedRoute><Requirements /></ProtectedRoute>} />
             <Route path="/requirements/new" element={<ProtectedRoute><NewRequirement /></ProtectedRoute>} />
@@ -60,3 +62,4 @@ const App = () => (
 );
 
 export default App;
+

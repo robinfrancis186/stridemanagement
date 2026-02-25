@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { Zap } from "lucide-react";
+import { clearCorruptAuthTokenKeys, clearSupabaseStorageKeys } from "@/lib/authStorage";
 
 const Auth = () => {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
@@ -16,21 +17,27 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Clear stale tokens on mount to prevent retry storms
-  useState(() => {
+  useEffect(() => {
+    clearCorruptAuthTokenKeys();
+  }, []);
+
+  const recoverFromFetchFailure = async () => {
+    clearSupabaseStorageKeys();
+    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+  };
+
+  const withAuthRecovery = async <T,>(request: () => Promise<T>): Promise<T> => {
     try {
-      Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
-        .forEach(k => {
-          const raw = localStorage.getItem(k);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (!parsed?.access_token || !parsed?.refresh_token || parsed.refresh_token.length < 20) {
-              localStorage.removeItem(k);
-            }
-          }
-        });
-    } catch { /* ignore */ }
-  });
+      return await request();
+    } catch (error: any) {
+      if (error?.message === "Failed to fetch") {
+        await recoverFromFetchFailure();
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return await request();
+      }
+      throw error;
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,65 +45,105 @@ const Auth = () => {
 
     try {
       if (mode === "forgot") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/reset-password`,
-        });
+        const { error } = await withAuthRecovery(() =>
+          supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/reset-password`,
+          })
+        );
         if (error) throw error;
+
         toast({
           title: "Check your email",
           description: "We sent a password reset link to your email address.",
         });
         setMode("login");
       } else if (mode === "login") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await withAuthRecovery(() =>
+          supabase.auth.signInWithPassword({ email, password })
+        );
         if (error) throw error;
         navigate("/");
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName },
-            emailRedirectTo: window.location.origin,
-          },
-        });
+        const { data, error } = await withAuthRecovery(() =>
+          supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: { full_name: fullName },
+              emailRedirectTo: window.location.origin,
+            },
+          })
+        );
         if (error) throw error;
 
-        if (data.user) {
-          await supabase.from("profiles").insert({
+        if (!data.user) {
+          toast({
+            title: "Account creation failed",
+            description: "Please try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (!data.session) {
+          toast({
+            title: "Account created",
+            description: "Please verify your email before signing in.",
+          });
+          setMode("login");
+          return;
+        }
+
+        const { error: profileError } = await supabase.from("profiles").insert({
+          user_id: data.user.id,
+          full_name: fullName,
+        });
+
+        if (profileError) {
+          console.warn("Profile creation skipped:", profileError.message);
+        }
+
+        const { count, error: countError } = await supabase
+          .from("user_roles")
+          .select("id", { count: "exact", head: true });
+
+        if (!countError && count === 0) {
+          const { error: roleError } = await supabase.from("user_roles").insert({
             user_id: data.user.id,
-            full_name: fullName,
+            role: "coe_admin",
           });
 
-          const { count } = await supabase
-            .from("user_roles")
-            .select("*", { count: "exact", head: true });
-
-          if (count === 0) {
-            await supabase.from("user_roles").insert({
-              user_id: data.user.id,
-              role: "coe_admin",
-            });
+          if (!roleError) {
             toast({
               title: "Admin account created",
               description: "You've been assigned as the first COE Admin.",
             });
-          } else {
-            toast({
-              title: "Account created",
-              description: "Your account is ready. An admin can assign your role.",
-            });
           }
-          navigate("/");
+        } else {
+          toast({
+            title: "Account created",
+            description: "Your account is ready. An admin can assign your role.",
+          });
         }
+
+        navigate("/");
       }
     } catch (error: any) {
-      const msg = error?.message === "Failed to fetch"
-        ? "Network error — please check your connection and try again."
-        : error?.message || "An error occurred";
+      const rawMessage = error?.message || "";
+      const isNetworkIssue =
+        rawMessage === "Failed to fetch" ||
+        rawMessage === "Load failed" ||
+        /network/i.test(rawMessage);
+
+      if (isNetworkIssue) {
+        await recoverFromFetchFailure();
+      }
+
       toast({
         title: "Error",
-        description: msg,
+        description: isNetworkIssue
+          ? "Network error — we reset your session locally. Please try again."
+          : rawMessage || "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -211,3 +258,4 @@ const Auth = () => {
 };
 
 export default Auth;
+
