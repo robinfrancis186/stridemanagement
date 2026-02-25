@@ -9,19 +9,45 @@ import { toast } from "@/hooks/use-toast";
 import { Zap } from "lucide-react";
 
 const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
+  const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
+  // Clear stale tokens on mount to prevent retry storms
+  useState(() => {
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
+        .forEach(k => {
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (!parsed?.access_token || !parsed?.refresh_token || parsed.refresh_token.length < 20) {
+              localStorage.removeItem(k);
+            }
+          }
+        });
+    } catch { /* ignore */ }
+  });
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      if (isLogin) {
+      if (mode === "forgot") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (error) throw error;
+        toast({
+          title: "Check your email",
+          description: "We sent a password reset link to your email address.",
+        });
+        setMode("login");
+      } else if (mode === "login") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         navigate("/");
@@ -36,14 +62,12 @@ const Auth = () => {
         });
         if (error) throw error;
 
-        // Create profile client-side (trigger was removed from auth.users)
         if (data.user) {
           await supabase.from("profiles").insert({
             user_id: data.user.id,
             full_name: fullName,
           });
 
-          // Bootstrap: if no roles exist yet, make this user coe_admin
           const { count } = await supabase
             .from("user_roles")
             .select("*", { count: "exact", head: true });
@@ -98,17 +122,19 @@ const Auth = () => {
         <Card className="shadow-elevated border-border/60">
           <CardHeader className="pb-4">
             <CardTitle className="font-display text-xl">
-              {isLogin ? "Sign In" : "Create Account"}
+              {mode === "login" ? "Sign In" : mode === "signup" ? "Create Account" : "Reset Password"}
             </CardTitle>
             <CardDescription>
-              {isLogin
+              {mode === "login"
                 ? "Enter your credentials to access the dashboard"
-                : "Register for a new COE account"}
+                : mode === "signup"
+                ? "Register for a new COE account"
+                : "Enter your email to receive a reset link"}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {!isLogin && (
+              {mode === "signup" && (
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
                   <Input
@@ -116,7 +142,7 @@ const Auth = () => {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Your full name"
-                    required={!isLogin}
+                    required
                   />
                 </div>
               )}
@@ -131,29 +157,50 @@ const Auth = () => {
                   required
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  minLength={6}
-                />
-              </div>
+              {mode !== "forgot" && (
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </div>
+              )}
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Please wait..." : isLogin ? "Sign In" : "Create Account"}
+                {loading
+                  ? "Please wait..."
+                  : mode === "login"
+                  ? "Sign In"
+                  : mode === "signup"
+                  ? "Create Account"
+                  : "Send Reset Link"}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm">
+            <div className="mt-4 space-y-2 text-center text-sm">
+              {mode === "login" && (
+                <button
+                  type="button"
+                  className="block w-full text-muted-foreground hover:text-primary hover:underline"
+                  onClick={() => setMode("forgot")}
+                >
+                  Forgot your password?
+                </button>
+              )}
               <button
                 type="button"
                 className="text-primary hover:underline"
-                onClick={() => setIsLogin(!isLogin)}
+                onClick={() => setMode(mode === "signup" ? "login" : mode === "login" ? "signup" : "login")}
               >
-                {isLogin ? "Need an account? Sign up" : "Already have an account? Sign in"}
+                {mode === "signup"
+                  ? "Already have an account? Sign in"
+                  : mode === "login"
+                  ? "Need an account? Sign up"
+                  : "Back to sign in"}
               </button>
             </div>
           </CardContent>
