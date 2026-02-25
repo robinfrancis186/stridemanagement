@@ -14,6 +14,7 @@ import { SOURCE_TYPES, PRIORITIES, TECH_LEVELS, THERAPY_DOMAINS, DISABILITY_TYPE
 import { ArrowLeft, Save } from "lucide-react";
 import { Link } from "react-router-dom";
 import AIPDFUploader from "@/components/AIPDFUploader";
+import DuplicateDetector from "@/components/DuplicateDetector";
 
 const NewRequirement = () => {
   const navigate = useNavigate();
@@ -93,6 +94,7 @@ const NewRequirement = () => {
       </div>
 
       <AIPDFUploader />
+      <DuplicateDetector title={title} description={description} />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="shadow-card">

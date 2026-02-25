@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.ai-monthly-report]
 verify_jwt = false
+
+[functions.ai-duplicate-check]
+verify_jwt = false
