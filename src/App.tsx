@@ -11,6 +11,10 @@ import Requirements from "@/pages/Requirements";
 import RequirementDetail from "@/pages/RequirementDetail";
 import NewRequirement from "@/pages/NewRequirement";
 import LeadershipDashboard from "@/pages/LeadershipDashboard";
+import DesignathonManagement from "@/pages/DesignathonManagement";
+import ProductionCatalogue from "@/pages/ProductionCatalogue";
+import DeviceDocumentation from "@/pages/DeviceDocumentation";
+import MonthlyReport from "@/pages/MonthlyReport";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,7 +46,11 @@ const App = () => (
             <Route path="/requirements" element={<ProtectedRoute><Requirements /></ProtectedRoute>} />
             <Route path="/requirements/new" element={<ProtectedRoute><NewRequirement /></ProtectedRoute>} />
             <Route path="/requirements/:id" element={<ProtectedRoute><RequirementDetail /></ProtectedRoute>} />
+            <Route path="/requirements/:id/documentation" element={<ProtectedRoute><DeviceDocumentation /></ProtectedRoute>} />
+            <Route path="/catalogue" element={<ProtectedRoute><ProductionCatalogue /></ProtectedRoute>} />
+            <Route path="/designathon" element={<ProtectedRoute><DesignathonManagement /></ProtectedRoute>} />
             <Route path="/analytics" element={<ProtectedRoute><LeadershipDashboard /></ProtectedRoute>} />
+            <Route path="/reports" element={<ProtectedRoute><MonthlyReport /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

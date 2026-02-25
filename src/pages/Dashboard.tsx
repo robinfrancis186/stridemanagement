@@ -46,9 +46,13 @@ const Dashboard = () => {
   const p1Active = requirements.filter((r) => r.priority === "P1" && r.current_state !== "H-DOE-5").length;
   const productionReady = requirements.filter((r) => r.current_state === "H-DOE-5").length;
   const stuckItems = requirements.filter((r) => {
-    const created = new Date(r.created_at);
-    const daysSince = (Date.now() - created.getTime()) / (1000 * 60 * 60 * 24);
-    return r.current_state === "S1" && daysSince > 14;
+    const days = (Date.now() - new Date(r.created_at).getTime()) / 86400000;
+    const s = r.current_state;
+    if (s.startsWith("S") && days > 14) return true;
+    if (s.startsWith("H-INT") && days > 60) return true;
+    if (s.startsWith("H-DES") && days > 90) return true;
+    if (s.startsWith("H-DOE") && days > 45) return true;
+    return false;
   }).length;
 
   // Group requirements by state for pipeline

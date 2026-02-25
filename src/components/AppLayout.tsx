@@ -10,14 +10,21 @@ import {
   Zap,
   User,
   BarChart3,
+  Trophy,
+  Package,
+  Calendar,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import NotificationBell from "@/components/NotificationBell";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
   { to: "/requirements", icon: ListChecks, label: "Requirements" },
   { to: "/requirements/new", icon: Plus, label: "New Requirement" },
-  { to: "/analytics", icon: BarChart3, label: "Leadership Analytics" },
+  { to: "/catalogue", icon: Package, label: "Catalogue" },
+  { to: "/designathon", icon: Trophy, label: "Designathon" },
+  { to: "/analytics", icon: BarChart3, label: "Analytics" },
+  { to: "/reports", icon: Calendar, label: "Monthly Report" },
 ];
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
@@ -32,13 +39,14 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
           <div className="flex h-9 w-9 items-center justify-center rounded-lg gradient-primary">
             <Zap className="h-5 w-5 text-sidebar-primary-foreground" />
           </div>
-          <div>
+          <div className="flex-1">
             <h1 className="font-display text-base font-bold text-sidebar-foreground">STRIDE COE</h1>
             <p className="text-[11px] text-sidebar-foreground/60">Workflow Management</p>
           </div>
+          <NotificationBell />
         </div>
 
-        <nav className="flex-1 space-y-1 p-3">
+        <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
           {navItems.map((item) => {
             const isActive = location.pathname === item.to || 
               (item.to !== "/" && location.pathname.startsWith(item.to));

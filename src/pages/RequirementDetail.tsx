@@ -12,8 +12,10 @@ import PhaseFeedbackModal, { type FeedbackData } from "@/components/PhaseFeedbac
 import PathAssignmentModal from "@/components/PathAssignmentModal";
 import DoETab from "@/components/DoETab";
 import CommitteeReviewPanel from "@/components/CommitteeReviewPanel";
+import FileUploadZone from "@/components/FileUploadZone";
+import VersionHistoryTab from "@/components/VersionHistoryTab";
 import { toast } from "@/hooks/use-toast";
-import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle, FlaskConical, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle, FlaskConical, Users, Paperclip, History } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface Requirement {
@@ -247,15 +249,21 @@ const RequirementDetail = () => {
       )}
 
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="feedback">Feedback ({feedbacks.length})</TabsTrigger>
+          <TabsTrigger value="files" className="flex items-center gap-1.5">
+            <Paperclip className="h-3 w-3" />Files
+          </TabsTrigger>
           <TabsTrigger value="doe" className="flex items-center gap-1.5">
             <FlaskConical className="h-3 w-3" />DoE
           </TabsTrigger>
           <TabsTrigger value="committee" className="flex items-center gap-1.5">
             <Users className="h-3 w-3" />Committee
+          </TabsTrigger>
+          <TabsTrigger value="versions" className="flex items-center gap-1.5">
+            <History className="h-3 w-3" />Versions
           </TabsTrigger>
         </TabsList>
 
@@ -439,6 +447,14 @@ const RequirementDetail = () => {
 
         <TabsContent value="committee">
           <CommitteeReviewPanel requirementId={req.id} currentState={req.current_state} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="files">
+          <FileUploadZone requirementId={req.id} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="versions">
+          <VersionHistoryTab requirementId={req.id} />
         </TabsContent>
       </Tabs>
 
