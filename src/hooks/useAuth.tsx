@@ -1,6 +1,7 @@
 import { useState, useEffect, createContext, useContext, ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { User, Session } from "@supabase/supabase-js";
+import { clearCorruptAuthTokenKeys, clearSupabaseStorageKeys } from "@/lib/authStorage";
 
 interface AuthContextType {
   user: User | null;
@@ -26,84 +27,92 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let settled = false;
+    let unmounted = false;
+
     const settle = () => {
-      if (!settled) {
+      if (!settled && !unmounted) {
         settled = true;
         setLoading(false);
       }
     };
 
-    // Immediately clear any corrupt/stale auth data that causes infinite retry loops
-    try {
-      const storageKey = Object.keys(localStorage).find(k => k.startsWith('sb-') && k.endsWith('-auth-token'));
-      if (storageKey) {
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          // If refresh token is very short or access token is missing, it's stale
-          if (!parsed?.access_token || !parsed?.refresh_token || parsed.refresh_token.length < 20) {
-            console.warn("Clearing stale auth token from localStorage");
-            localStorage.removeItem(storageKey);
-          }
+    const loadRole = async (userId: string) => {
+      try {
+        const { data } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", userId)
+          .maybeSingle();
+
+        if (!unmounted) {
+          setRole(data?.role ?? null);
+        }
+      } catch {
+        if (!unmounted) {
+          setRole(null);
         }
       }
-    } catch {
-      // If parsing fails, clear all sb auth keys
-      Object.keys(localStorage).filter(k => k.startsWith('sb-') && k.endsWith('-auth-token'))
-        .forEach(k => localStorage.removeItem(k));
-    }
+    };
+
+    const syncSession = async (nextSession: Session | null) => {
+      if (unmounted) return;
+
+      setSession(nextSession);
+      const nextUser = nextSession?.user ?? null;
+      setUser(nextUser);
+
+      if (nextUser) {
+        await loadRole(nextUser.id);
+      } else {
+        setRole(null);
+      }
+
+      settle();
+    };
+
+    const recoverAuthState = async (error: unknown) => {
+      console.warn("Auth recovery triggered:", error);
+      await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+      clearSupabaseStorageKeys();
+
+      if (!unmounted) {
+        setSession(null);
+        setUser(null);
+        setRole(null);
+      }
+
+      settle();
+    };
+
+    clearCorruptAuthTokenKeys();
 
     const timeout = setTimeout(() => {
       console.warn("Auth timeout — forcing loading=false");
       settle();
-    }, 3000);
+    }, 4000);
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          try {
-            const { data } = await supabase
-              .from("user_roles")
-              .select("role")
-              .eq("user_id", session.user.id)
-              .maybeSingle();
-            setRole(data?.role ?? null);
-          } catch {
-            setRole(null);
-          }
-        } else {
-          setRole(null);
-        }
-        settle();
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        Promise.resolve(
-          supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .maybeSingle()
-        ).then(({ data }) => setRole(data?.role ?? null))
-          .catch(() => setRole(null));
-      }
-      settle();
-    }).catch((err: any) => {
-      console.warn("getSession failed, clearing stale session:", err);
-      supabase.auth.signOut().catch(() => {});
-      // Force-clear localStorage to stop retry loops
-      Object.keys(localStorage).filter(k => k.startsWith('sb-'))
-        .forEach(k => localStorage.removeItem(k));
-      settle();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      void syncSession(nextSession);
     });
 
+    void (async () => {
+      try {
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
+
+        if (error) throw error;
+        await syncSession(session);
+      } catch (error) {
+        await recoverAuthState(error);
+      }
+    })();
+
     return () => {
+      unmounted = true;
       clearTimeout(timeout);
       subscription.unsubscribe();
     };
@@ -111,6 +120,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    clearSupabaseStorageKeys();
   };
 
   return (
@@ -121,3 +131,4 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
+
