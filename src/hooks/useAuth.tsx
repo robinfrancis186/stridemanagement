@@ -33,20 +33,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    // Safety timeout — if nothing resolves in 5s, stop loading
-    const timeout = setTimeout(settle, 5000);
+    // Safety timeout — if nothing resolves in 3s, stop loading
+    const timeout = setTimeout(() => {
+      console.warn("Auth timeout — forcing loading=false");
+      settle();
+    }, 3000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          const { data } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", session.user.id)
-            .maybeSingle();
-          setRole(data?.role ?? null);
+          try {
+            const { data } = await supabase
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", session.user.id)
+              .maybeSingle();
+            setRole(data?.role ?? null);
+          } catch {
+            setRole(null);
+          }
         } else {
           setRole(null);
         }
@@ -58,15 +65,20 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .maybeSingle()
-          .then(({ data }) => setRole(data?.role ?? null));
+        Promise.resolve(
+          supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", session.user.id)
+            .maybeSingle()
+        ).then(({ data }) => setRole(data?.role ?? null))
+          .catch(() => setRole(null));
       }
       settle();
-    }).catch(() => {
+    }).catch((err) => {
+      console.warn("getSession failed, clearing stale session:", err);
+      // Clear stale session data that causes infinite retry loops
+      supabase.auth.signOut().catch(() => {});
       settle();
     });
 
