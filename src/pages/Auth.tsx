@@ -227,6 +227,38 @@ const Auth = () => {
                   ? "Create Account"
                   : "Send Reset Link"}
               </Button>
+
+              {mode === "login" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const { error } = await withAuthRecovery(() =>
+                        supabase.auth.signInWithPassword({
+                          email: "demo@stride-coe.com",
+                          password: "demo1234",
+                        })
+                      );
+                      if (error) throw error;
+                      navigate("/");
+                    } catch (error: any) {
+                      toast({
+                        title: "Demo login failed",
+                        description: error?.message || "Could not sign in with demo account. It may not exist yet.",
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  Try Demo
+                </Button>
+              )}
             </form>
             <div className="mt-4 space-y-2 text-center text-sm">
               {mode === "login" && (
