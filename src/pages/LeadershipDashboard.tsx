@@ -319,6 +319,58 @@ const LeadershipDashboard = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* 30/60/90 Cycle Analytics */}
+      <Card className="shadow-card">
+        <CardHeader><CardTitle className="font-display text-base">30/60/90 Day Cycle Analytics</CardTitle></CardHeader>
+        <CardContent>
+          {(() => {
+            // Calculate avg days per phase from transitions
+            const phaseTimesMap: Record<string, number[]> = {};
+            // Group transitions by requirement
+            const byReq: Record<string, Array<{ from_state: string; to_state: string; created_at: string }>> = {};
+            transitions.forEach(t => {
+              if (!byReq[t.requirement_id]) byReq[t.requirement_id] = [];
+              byReq[t.requirement_id].push(t);
+            });
+            Object.values(byReq).forEach(reqTransitions => {
+              for (let i = 0; i < reqTransitions.length; i++) {
+                const t = reqTransitions[i];
+                const prevTime = i > 0 ? new Date(reqTransitions[i - 1].created_at).getTime() : null;
+                if (prevTime) {
+                  const days = (new Date(t.created_at).getTime() - prevTime) / 86400000;
+                  if (!phaseTimesMap[t.from_state]) phaseTimesMap[t.from_state] = [];
+                  phaseTimesMap[t.from_state].push(days);
+                }
+              }
+            });
+            const cycleData = Object.entries(phaseTimesMap).map(([state, times]) => ({
+              state,
+              avg: Math.round(times.reduce((a, b) => a + b, 0) / times.length * 10) / 10,
+              count: times.length,
+            })).sort((a, b) => {
+              const order = Object.keys(STATES);
+              return order.indexOf(a.state) - order.indexOf(b.state);
+            });
+
+            if (cycleData.length === 0) return <p className="text-sm text-muted-foreground text-center py-4">No cycle data available yet.</p>;
+
+            return (
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cycleData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                    <XAxis dataKey="state" tick={{ fontSize: 9 }} stroke="hsl(var(--muted-foreground))" angle={-45} textAnchor="end" height={50} />
+                    <YAxis tick={{ fontSize: 11 }} stroke="hsl(var(--muted-foreground))" label={{ value: "Avg Days", angle: -90, position: "insideLeft", style: { fontSize: 11 } }} />
+                    <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }} formatter={(value: number) => [`${value} days`, "Avg Time"]} />
+                    <Bar dataKey="avg" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
     </div>
   );
 };

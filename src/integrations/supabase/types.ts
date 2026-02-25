@@ -108,6 +108,90 @@ export type Database = {
           },
         ]
       }
+      designathon_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string | null
+          id: string
+          start_date: string | null
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          start_date?: string | null
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string | null
+          id?: string
+          start_date?: string | null
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      designathon_teams: {
+        Row: {
+          created_at: string
+          event_id: string
+          id: string
+          members: string[] | null
+          requirement_id: string | null
+          score: number | null
+          submission_url: string | null
+          team_name: string
+        }
+        Insert: {
+          created_at?: string
+          event_id: string
+          id?: string
+          members?: string[] | null
+          requirement_id?: string | null
+          score?: number | null
+          submission_url?: string | null
+          team_name: string
+        }
+        Update: {
+          created_at?: string
+          event_id?: string
+          id?: string
+          members?: string[] | null
+          requirement_id?: string | null
+          score?: number | null
+          submission_url?: string | null
+          team_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "designathon_teams_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "designathon_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "designathon_teams_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       doe_records: {
         Row: {
           baseline_data: Json | null
@@ -163,6 +247,47 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "doe_records_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          read: boolean
+          requirement_id: string | null
+          title: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          read?: boolean
+          requirement_id?: string | null
+          title: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          read?: boolean
+          requirement_id?: string | null
+          title?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_requirement_id_fkey"
             columns: ["requirement_id"]
             isOneToOne: false
             referencedRelation: "requirements"
@@ -243,6 +368,82 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      requirement_files: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_path: string
+          file_size: number | null
+          file_type: string | null
+          id: string
+          requirement_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          requirement_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          file_type?: string | null
+          id?: string
+          requirement_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requirement_files_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      requirement_versions: {
+        Row: {
+          changed_by: string | null
+          changes: Json
+          created_at: string
+          id: string
+          requirement_id: string
+          snapshot: Json
+        }
+        Insert: {
+          changed_by?: string | null
+          changes?: Json
+          created_at?: string
+          id?: string
+          requirement_id: string
+          snapshot?: Json
+        }
+        Update: {
+          changed_by?: string | null
+          changes?: Json
+          created_at?: string
+          id?: string
+          requirement_id?: string
+          snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "requirement_versions_requirement_id_fkey"
+            columns: ["requirement_id"]
+            isOneToOne: false
+            referencedRelation: "requirements"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       requirements: {
         Row: {
