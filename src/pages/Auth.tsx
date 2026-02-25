@@ -26,7 +26,7 @@ const Auth = () => {
         if (error) throw error;
         navigate("/");
       } else {
-        const { error } = await supabase.auth.signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -35,10 +35,36 @@ const Auth = () => {
           },
         });
         if (error) throw error;
-        toast({
-          title: "Account created",
-          description: "Check your email to verify your account.",
-        });
+
+        // Create profile client-side (trigger was removed from auth.users)
+        if (data.user) {
+          await supabase.from("profiles").insert({
+            user_id: data.user.id,
+            full_name: fullName,
+          });
+
+          // Bootstrap: if no roles exist yet, make this user coe_admin
+          const { count } = await supabase
+            .from("user_roles")
+            .select("*", { count: "exact", head: true });
+
+          if (count === 0) {
+            await supabase.from("user_roles").insert({
+              user_id: data.user.id,
+              role: "coe_admin",
+            });
+            toast({
+              title: "Admin account created",
+              description: "You've been assigned as the first COE Admin.",
+            });
+          } else {
+            toast({
+              title: "Account created",
+              description: "Your account is ready. An admin can assign your role.",
+            });
+          }
+          navigate("/");
+        }
       }
     } catch (error: any) {
       toast({

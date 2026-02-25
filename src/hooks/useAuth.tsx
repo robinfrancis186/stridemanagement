@@ -25,6 +25,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        setLoading(false);
+      }
+    };
+
+    // Safety timeout — if nothing resolves in 5s, stop loading
+    const timeout = setTimeout(settle, 5000);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         setSession(session);
@@ -39,7 +50,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setRole(null);
         }
-        setLoading(false);
+        settle();
       }
     );
 
@@ -54,12 +65,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           .maybeSingle()
           .then(({ data }) => setRole(data?.role ?? null));
       }
-      setLoading(false);
+      settle();
     }).catch(() => {
-      setLoading(false);
+      settle();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      clearTimeout(timeout);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
