@@ -55,7 +55,7 @@ const NewRequirement = () => {
       therapy_domains: selectedTherapies,
       gap_flags: gapFlags,
       current_state: "S1",
-      created_by: user?.id,
+      created_by: null,
     }).select().single();
 
     if (error) {
@@ -70,7 +70,7 @@ const NewRequirement = () => {
         requirement_id: data.id,
         from_state: "NEW",
         to_state: "S1",
-        transitioned_by: user?.id,
+        transitioned_by: null,
         notes: "Requirement captured",
       });
     }
