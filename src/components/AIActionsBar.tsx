@@ -4,17 +4,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Brain, Sparkles, FileSearch, FlaskConical, Loader2 } from "lucide-react";
+import { Brain, Sparkles, FileSearch, FlaskConical, Loader2, FileText } from "lucide-react";
 
 interface AIActionsBarProps {
   requirementId: string;
   onClassified?: () => void;
   onDoeGenerated?: () => void;
+  onDocGenerated?: () => void;
 }
 
-const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated }: AIActionsBarProps) => {
+const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenerated }: AIActionsBarProps) => {
   const [classifying, setClassifying] = useState(false);
   const [generatingDoe, setGeneratingDoe] = useState(false);
+  const [generatingDoc, setGeneratingDoc] = useState(false);
   const [lastResult, setLastResult] = useState<{ type: string; data: any } | null>(null);
 
   const handleClassify = async () => {
@@ -57,6 +59,26 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated }: AIActions
     }
   };
 
+  const handleGenerateDoc = async () => {
+    setGeneratingDoc(true);
+    setLastResult(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("ai-device-doc", {
+        body: { requirementId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      setLastResult({ type: "doc", data: data.document });
+      toast({ title: "Device Doc Package Generated", description: "Full documentation package is ready." });
+      onDocGenerated?.();
+    } catch (e: any) {
+      toast({ title: "Doc Generation Failed", description: e.message, variant: "destructive" });
+    } finally {
+      setGeneratingDoc(false);
+    }
+  };
+
   return (
     <Card className="shadow-card border-primary/20 bg-gradient-to-r from-primary/5 to-transparent">
       <CardContent className="p-4 space-y-3">
@@ -73,6 +95,10 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated }: AIActions
           <Button size="sm" variant="outline" onClick={handleGenerateDoe} disabled={generatingDoe}>
             {generatingDoe ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FlaskConical className="mr-1.5 h-3.5 w-3.5" />}
             {generatingDoe ? "Generating..." : "Generate DoE Template"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleGenerateDoc} disabled={generatingDoc}>
+            {generatingDoc ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <FileText className="mr-1.5 h-3.5 w-3.5" />}
+            {generatingDoc ? "Generating Doc..." : "Generate Device Doc Package"}
           </Button>
         </div>
 
@@ -101,6 +127,13 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated }: AIActions
             <p className="font-medium text-foreground">DoE Template Generated</p>
             <p className="text-muted-foreground text-xs">Sample size: {lastResult.data.sample_size} | Duration: {lastResult.data.estimated_duration_weeks} weeks</p>
             <p className="text-muted-foreground text-xs">Check the DoE tab for full details.</p>
+          </div>
+        )}
+
+        {lastResult?.type === "doc" && (
+          <div className="mt-2 p-3 bg-muted/50 rounded-lg space-y-2 text-sm max-h-96 overflow-y-auto">
+            <p className="font-medium text-foreground">Device Documentation Package</p>
+            <pre className="whitespace-pre-wrap text-xs text-muted-foreground font-mono">{lastResult.data}</pre>
           </div>
         )}
       </CardContent>
