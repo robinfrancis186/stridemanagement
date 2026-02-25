@@ -1,12 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { STATES, type StateKey } from "@/lib/constants";
-import { ArrowLeft, Clock, CheckCircle } from "lucide-react";
+import { getNextStates, isTerminalState, isPathAssignmentRequired } from "@/lib/stateMachine";
+import PhaseFeedbackModal, { type FeedbackData } from "@/components/PhaseFeedbackModal";
+import PathAssignmentModal from "@/components/PathAssignmentModal";
+import { toast } from "@/hooks/use-toast";
+import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
 
 interface Requirement {
@@ -36,38 +41,143 @@ interface Transition {
   created_at: string;
 }
 
+interface PhaseFeedback {
+  id: string;
+  from_state: string;
+  to_state: string;
+  phase_notes: string | null;
+  blockers_resolved: string[] | null;
+  key_decisions: string[] | null;
+  phase_specific_data: Record<string, string> | null;
+  created_at: string;
+  submitted_by: string | null;
+}
+
 const RequirementDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const { user, role } = useAuth();
   const [req, setReq] = useState<Requirement | null>(null);
   const [transitions, setTransitions] = useState<Transition[]>([]);
+  const [feedbacks, setFeedbacks] = useState<PhaseFeedback[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  // Modal states
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [pathOpen, setPathOpen] = useState(false);
+  const [selectedNextState, setSelectedNextState] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchData = useCallback(async () => {
     if (!id) return;
-    const fetchData = async () => {
-      const [reqRes, transRes] = await Promise.all([
-        supabase.from("requirements").select("*").eq("id", id).single(),
-        supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
-      ]);
-      setReq(reqRes.data as Requirement | null);
-      setTransitions((transRes.data as Transition[]) || []);
-      setLoading(false);
-    };
-    fetchData();
+    const [reqRes, transRes, fbRes] = await Promise.all([
+      supabase.from("requirements").select("*").eq("id", id).single(),
+      supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
+      supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
+    ]);
+    setReq(reqRes.data as Requirement | null);
+    setTransitions((transRes.data as Transition[]) || []);
+    setFeedbacks((fbRes.data as PhaseFeedback[]) || []);
+    setLoading(false);
   }, [id]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   if (loading) return <div className="py-12 text-center text-muted-foreground">Loading...</div>;
   if (!req) return <div className="py-12 text-center text-muted-foreground">Requirement not found.</div>;
 
   const si = STATES[req.current_state as StateKey] || { label: req.current_state, phase: "", color: "muted" };
+  const isAdmin = role === "coe_admin";
+  const nextStates = getNextStates(req.current_state, req.path_assignment);
+  const terminal = isTerminalState(req.current_state);
+  const needsPath = isPathAssignmentRequired(req.current_state) && !req.path_assignment;
 
-  // Calculate data completeness
-  const fields = [
-    req.title, req.description, req.source_type, req.priority, req.tech_level,
-    req.disability_types?.length, req.therapy_domains?.length, req.market_price, req.stride_target_price,
-  ];
-  const filled = fields.filter(Boolean).length;
-  const completeness = Math.round((filled / fields.length) * 100);
+  // Data completeness
+  const fields = [req.title, req.description, req.source_type, req.priority, req.tech_level, req.disability_types?.length, req.therapy_domains?.length, req.market_price, req.stride_target_price];
+  const completeness = Math.round((fields.filter(Boolean).length / fields.length) * 100);
+
+  const handleAdvanceClick = (toState: string) => {
+    if (needsPath) {
+      setPathOpen(true);
+      return;
+    }
+    setSelectedNextState(toState);
+    setFeedbackOpen(true);
+  };
+
+  const handlePathAssign = async (path: "INTERNAL" | "DESIGNATHON", justification: string) => {
+    setSubmitting(true);
+    const { error } = await supabase.from("requirements").update({ path_assignment: path }).eq("id", req.id);
+    if (error) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setSubmitting(false);
+      return;
+    }
+    // Auto-set next state based on path
+    const nextState = path === "INTERNAL" ? "H-INT-1" : "H-DES-1";
+    setReq({ ...req, path_assignment: path });
+    setPathOpen(false);
+    setSubmitting(false);
+    // Now open feedback for the transition
+    setSelectedNextState(nextState);
+    setFeedbackOpen(true);
+  };
+
+  const handleFeedbackSubmit = async (data: FeedbackData) => {
+    setSubmitting(true);
+    const fromState = req.current_state;
+    const toState = selectedNextState;
+
+    // Insert feedback
+    const { error: fbErr } = await supabase.from("phase_feedbacks").insert({
+      requirement_id: req.id,
+      from_state: fromState,
+      to_state: toState,
+      phase_notes: data.phaseNotes,
+      blockers_resolved: data.blockersResolved,
+      key_decisions: data.keyDecisions,
+      phase_specific_data: data.phaseSpecificData,
+      submitted_by: user?.id,
+    });
+
+    if (fbErr) {
+      toast({ title: "Error saving feedback", description: fbErr.message, variant: "destructive" });
+      setSubmitting(false);
+      return;
+    }
+
+    // Insert transition
+    const { error: trErr } = await supabase.from("state_transitions").insert({
+      requirement_id: req.id,
+      from_state: fromState,
+      to_state: toState,
+      transitioned_by: user?.id,
+      notes: data.phaseNotes.slice(0, 200),
+    });
+
+    if (trErr) {
+      toast({ title: "Error recording transition", description: trErr.message, variant: "destructive" });
+      setSubmitting(false);
+      return;
+    }
+
+    // Update requirement state (and increment revision if revision loop)
+    const isRevision = (toState === "H-INT-1" || toState === "H-DES-1") && fromState === "H-DOE-4";
+    const { error: reqErr } = await supabase.from("requirements").update({
+      current_state: toState,
+      ...(isRevision ? { revision_number: req.revision_number + 1 } : {}),
+    }).eq("id", req.id);
+
+    if (reqErr) {
+      toast({ title: "Error updating state", description: reqErr.message, variant: "destructive" });
+      setSubmitting(false);
+      return;
+    }
+
+    toast({ title: "State Advanced", description: `Transitioned from ${fromState} to ${toState}` });
+    setFeedbackOpen(false);
+    setSubmitting(false);
+    fetchData(); // Refresh
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -85,18 +195,63 @@ const RequirementDetail = () => {
             <Badge variant="secondary">{req.source_type}</Badge>
             <Badge variant="secondary">{req.tech_level}</Badge>
             {req.path_assignment && <Badge variant="outline">{req.path_assignment}</Badge>}
+            {req.revision_number > 0 && <Badge variant="outline" className="text-warning">Rev #{req.revision_number}</Badge>}
           </div>
         </div>
       </div>
+
+      {/* Advance State Bar */}
+      {isAdmin && !terminal && (
+        <Card className="shadow-card border-primary/20">
+          <CardContent className="p-4 flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium text-foreground">Advance State:</span>
+            {needsPath ? (
+              <Button size="sm" onClick={() => setPathOpen(true)}>
+                <ChevronRight className="mr-1.5 h-3.5 w-3.5" />
+                Assign Path & Advance
+              </Button>
+            ) : nextStates.length > 0 ? (
+              nextStates.map((ns) => {
+                const nsInfo = STATES[ns as StateKey];
+                const isRevision = (ns === "H-INT-1" || ns === "H-DES-1") && req.current_state === "H-DOE-4";
+                return (
+                  <Button
+                    key={ns}
+                    size="sm"
+                    variant={isRevision ? "outline" : "default"}
+                    onClick={() => handleAdvanceClick(ns)}
+                  >
+                    {isRevision ? (
+                      <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
+                    ) : (
+                      <ArrowRight className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {isRevision ? `Revision → ${ns}` : `${ns} — ${nsInfo?.label || ns}`}
+                  </Button>
+                );
+              })
+            ) : null}
+          </CardContent>
+        </Card>
+      )}
+
+      {terminal && (
+        <Card className="shadow-card border-success/30 bg-success/5">
+          <CardContent className="p-4 flex items-center gap-3">
+            <CheckCircle className="h-5 w-5 text-success" />
+            <span className="text-sm font-medium text-success">This requirement is Production-Ready.</span>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="timeline">Timeline</TabsTrigger>
+          <TabsTrigger value="feedback">Feedback History ({feedbacks.length})</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4">
-          {/* Completeness bar */}
           <Card className="shadow-card">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-2">
@@ -117,6 +272,7 @@ const RequirementDetail = () => {
                 <div className="flex justify-between"><span className="text-muted-foreground">Source</span><span>{req.source_type}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Priority</span><span>{req.priority}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Tech Level</span><span>{req.tech_level}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">Path</span><span>{req.path_assignment || "Not assigned"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Revision</span><span>#{req.revision_number}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Created</span><span>{format(new Date(req.created_at), "PPp")}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Updated</span><span>{format(new Date(req.updated_at), "PPp")}</span></div>
@@ -168,7 +324,7 @@ const RequirementDetail = () => {
               ) : (
                 <div className="relative pl-6 space-y-6">
                   <div className="absolute left-2.5 top-1 bottom-1 w-px bg-border" />
-                  {transitions.map((t, i) => (
+                  {transitions.map((t) => (
                     <div key={t.id} className="relative">
                       <div className="absolute -left-6 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary">
                         <CheckCircle className="h-3 w-3 text-primary-foreground" />
@@ -181,9 +337,7 @@ const RequirementDetail = () => {
                         </div>
                         <div className="flex items-center gap-2 mt-1">
                           <Clock className="h-3 w-3 text-muted-foreground" />
-                          <span className="text-[11px] text-muted-foreground">
-                            {format(new Date(t.created_at), "PPp")}
-                          </span>
+                          <span className="text-[11px] text-muted-foreground">{format(new Date(t.created_at), "PPp")}</span>
                         </div>
                         {t.notes && <p className="mt-1 text-sm text-muted-foreground">{t.notes}</p>}
                       </div>
@@ -194,7 +348,99 @@ const RequirementDetail = () => {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="feedback" className="space-y-4">
+          {feedbacks.length === 0 ? (
+            <Card className="shadow-card">
+              <CardContent className="p-6 text-center text-muted-foreground text-sm">
+                No phase feedback recorded yet. Feedback is captured each time the state advances.
+              </CardContent>
+            </Card>
+          ) : (
+            feedbacks.map((fb) => {
+              const fromLabel = STATES[fb.from_state as StateKey]?.label || fb.from_state;
+              const toLabel = STATES[fb.to_state as StateKey]?.label || fb.to_state;
+              return (
+                <Card key={fb.id} className="shadow-card">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-primary" />
+                        <CardTitle className="font-display text-sm">
+                          {fb.from_state} → {fb.to_state}
+                        </CardTitle>
+                        <span className="text-xs text-muted-foreground">
+                          ({fromLabel} → {toLabel})
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {format(new Date(fb.created_at), "PPp")}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-3 text-sm">
+                    {fb.phase_notes && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Phase Notes</p>
+                        <p className="text-foreground whitespace-pre-wrap">{fb.phase_notes}</p>
+                      </div>
+                    )}
+                    {fb.blockers_resolved && fb.blockers_resolved.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Blockers Resolved</p>
+                        <div className="flex flex-wrap gap-1">
+                          {fb.blockers_resolved.map((b, i) => (
+                            <Badge key={i} variant="secondary" className="text-xs">{b}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {fb.key_decisions && fb.key_decisions.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Key Decisions</p>
+                        <div className="flex flex-wrap gap-1">
+                          {fb.key_decisions.map((d, i) => (
+                            <Badge key={i} variant="outline" className="text-xs">{d}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {fb.phase_specific_data && Object.keys(fb.phase_specific_data).length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Phase-Specific Data</p>
+                        <div className="grid gap-1 text-xs">
+                          {Object.entries(fb.phase_specific_data).map(([k, v]) => (
+                            <div key={k} className="flex gap-2">
+                              <span className="text-muted-foreground capitalize">{k.replace(/_/g, " ")}:</span>
+                              <span className="text-foreground">{v}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* Modals */}
+      <PhaseFeedbackModal
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        fromState={req.current_state}
+        toState={selectedNextState}
+        onSubmit={handleFeedbackSubmit}
+        loading={submitting}
+      />
+      <PathAssignmentModal
+        open={pathOpen}
+        onOpenChange={setPathOpen}
+        onSubmit={handlePathAssign}
+        loading={submitting}
+      />
     </div>
   );
 };
