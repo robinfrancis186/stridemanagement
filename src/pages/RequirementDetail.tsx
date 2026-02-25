@@ -14,6 +14,7 @@ import DoETab from "@/components/DoETab";
 import CommitteeReviewPanel from "@/components/CommitteeReviewPanel";
 import FileUploadZone from "@/components/FileUploadZone";
 import VersionHistoryTab from "@/components/VersionHistoryTab";
+import AIActionsBar from "@/components/AIActionsBar";
 import { toast } from "@/hooks/use-toast";
 import { ArrowLeft, ArrowRight, Clock, CheckCircle, ChevronRight, FileText, AlertTriangle, FlaskConical, Users, Paperclip, History } from "lucide-react";
 import { formatDistanceToNow, format } from "date-fns";
@@ -237,6 +238,15 @@ const RequirementDetail = () => {
             ) : null}
           </CardContent>
         </Card>
+      )}
+
+      {/* AI Agent Actions */}
+      {isAdmin && (
+        <AIActionsBar
+          requirementId={req.id}
+          onClassified={fetchData}
+          onDoeGenerated={fetchData}
+        />
       )}
 
       {terminal && (

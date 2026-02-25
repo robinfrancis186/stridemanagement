@@ -13,6 +13,7 @@ import { toast } from "@/hooks/use-toast";
 import { SOURCE_TYPES, PRIORITIES, TECH_LEVELS, THERAPY_DOMAINS, DISABILITY_TYPES } from "@/lib/constants";
 import { ArrowLeft, Save } from "lucide-react";
 import { Link } from "react-router-dom";
+import AIPDFUploader from "@/components/AIPDFUploader";
 
 const NewRequirement = () => {
   const navigate = useNavigate();
@@ -90,6 +91,8 @@ const NewRequirement = () => {
           <p className="text-sm text-muted-foreground">Add a new assistive device requirement to the pipeline</p>
         </div>
       </div>
+
+      <AIPDFUploader />
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="shadow-card">
