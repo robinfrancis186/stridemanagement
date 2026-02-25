@@ -10,7 +10,7 @@ interface AuthContextType {
 }
 
 const DEMO_USER = {
-  id: "demo-user",
+  id: "00000000-0000-0000-0000-000000000000",
   email: "demo@stride-coe.com",
   app_metadata: {},
   user_metadata: { full_name: "Demo User" },
