@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import { FileSearch, Upload, Loader2, Check, Plus } from "lucide-react";
+import { FileSearch, Upload, Loader2, Check, Plus, CheckCheck } from "lucide-react";
 
 const AIPDFUploader = () => {
   const navigate = useNavigate();
@@ -105,7 +105,7 @@ const AIPDFUploader = () => {
           market_price: req.market_price || null,
           stride_target_price: req.stride_target_price || null,
           current_state: "S1",
-          created_by: user?.id,
+          created_by: null,
         })
         .select()
         .single();
@@ -117,7 +117,7 @@ const AIPDFUploader = () => {
           requirement_id: data.id,
           from_state: "NEW",
           to_state: "S1",
-          transitioned_by: user?.id,
+          transitioned_by: null,
           notes: "Imported from document via AI extraction",
         });
         setImported((prev) => ({ ...prev, [index]: data.id }));
@@ -128,6 +128,73 @@ const AIPDFUploader = () => {
     } finally {
       setImporting((prev) => ({ ...prev, [index]: false }));
     }
+  };
+
+  const [importingAll, setImportingAll] = useState(false);
+
+  const handleImportAll = async () => {
+    if (!extracted?.requirements) return;
+    const remaining = extracted.requirements
+      .map((req: any, i: number) => ({ req, i }))
+      .filter(({ i }: { i: number }) => !imported[i]);
+
+    if (remaining.length === 0) {
+      toast({ title: "All imported", description: "All requirements have already been imported." });
+      return;
+    }
+
+    setImportingAll(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const { req, i } of remaining) {
+      try {
+        setImporting((prev) => ({ ...prev, [i]: true }));
+        const { data, error } = await supabase
+          .from("requirements")
+          .insert({
+            title: req.title,
+            description: req.description,
+            source_type: req.source_type || "OTHER",
+            priority: req.priority || "P2",
+            tech_level: req.tech_level || "LOW",
+            therapy_domains: req.therapy_domains || [],
+            disability_types: req.disability_types || [],
+            gap_flags: req.gap_flags || [],
+            market_price: req.market_price || null,
+            stride_target_price: req.stride_target_price || null,
+            current_state: "S1",
+            created_by: null,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          await supabase.from("state_transitions").insert({
+            requirement_id: data.id,
+            from_state: "NEW",
+            to_state: "S1",
+            transitioned_by: null,
+            notes: "Imported from document via AI extraction",
+          });
+          setImported((prev) => ({ ...prev, [i]: data.id }));
+          successCount++;
+        }
+      } catch {
+        failCount++;
+      } finally {
+        setImporting((prev) => ({ ...prev, [i]: false }));
+      }
+    }
+
+    setImportingAll(false);
+    toast({
+      title: "Bulk Import Complete",
+      description: `${successCount} imported${failCount > 0 ? `, ${failCount} failed` : ""}.`,
+      variant: failCount > 0 ? "destructive" : "default",
+    });
   };
 
   return (
@@ -148,9 +215,21 @@ const AIPDFUploader = () => {
 
         {extracted?.requirements && (
           <div className="space-y-3 mt-4">
-            <p className="text-sm font-medium text-foreground">
-              Extracted {extracted.requirements.length} requirement(s):
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-foreground">
+                Extracted {extracted.requirements.length} requirement(s):
+              </p>
+              {extracted.requirements.length > 1 && (
+                <Button
+                  size="sm"
+                  onClick={handleImportAll}
+                  disabled={importingAll || extracted.requirements.every((_: any, i: number) => imported[i])}
+                >
+                  {importingAll ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCheck className="mr-1 h-3.5 w-3.5" />}
+                  {importingAll ? "Importing..." : "Import All"}
+                </Button>
+              )}
+            </div>
             {extracted.requirements.map((req: any, i: number) => (
               <div key={i} className="p-3 border rounded-lg space-y-2">
                 <div className="flex items-start justify-between gap-2">
