@@ -13,22 +13,23 @@ const AIPDFUploader = () => {
   const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [parsing, setParsing] = useState(false);
+  const [statusText, setStatusText] = useState("");
   const [extracted, setExtracted] = useState<any>(null);
   const [importing, setImporting] = useState<Record<number, boolean>>({});
   const [imported, setImported] = useState<Record<number, string>>({});
 
-  const MAX_FILE_SIZE_MB = 20;
+  const MAX_FILE_SIZE_MB = 50;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  const DIRECT_UPLOAD_THRESHOLD = 5 * 1024 * 1024; // 5MB
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file size
     if (file.size > MAX_FILE_SIZE_BYTES) {
       toast({
         title: "File Too Large",
-        description: `Maximum file size is ${MAX_FILE_SIZE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Please use a smaller or compressed file.`,
+        description: `Maximum file size is ${MAX_FILE_SIZE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB.`,
         variant: "destructive",
       });
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -42,8 +43,21 @@ const AIPDFUploader = () => {
       const ext = file.name.split(".").pop()?.toLowerCase();
       let body: any;
 
-      if (ext === "pdf" || ext === "docx") {
-        // Read binary files as base64
+      if ((ext === "pdf" || ext === "docx") && file.size > DIRECT_UPLOAD_THRESHOLD) {
+        // Large file: upload to storage first, then pass path
+        setStatusText("Uploading file...");
+        const storagePath = `ai-parse/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from("requirement-files")
+          .upload(storagePath, file);
+
+        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+
+        setStatusText("Parsing document (this may take a minute)...");
+        body = { storagePath, fileName: file.name, fileType: ext };
+      } else if (ext === "pdf" || ext === "docx") {
+        // Small binary file: send as base64
+        setStatusText("Parsing document...");
         const arrayBuffer = await file.arrayBuffer();
         const bytes = new Uint8Array(arrayBuffer);
         let binary = "";
@@ -53,7 +67,7 @@ const AIPDFUploader = () => {
         const base64 = btoa(binary);
         body = { base64, fileName: file.name, fileType: ext };
       } else {
-        // Read text-based files directly
+        setStatusText("Parsing document...");
         const text = await file.text();
         body = { text };
       }
@@ -69,6 +83,7 @@ const AIPDFUploader = () => {
       toast({ title: "Parsing Failed", description: e.message, variant: "destructive" });
     } finally {
       setParsing(false);
+      setStatusText("");
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -127,7 +142,7 @@ const AIPDFUploader = () => {
         <input ref={fileInputRef} type="file" accept=".txt,.csv,.md,.json,.pdf,.docx" className="hidden" onChange={handleFileSelect} />
         <Button onClick={() => fileInputRef.current?.click()} disabled={parsing} variant="outline" className="w-full">
           {parsing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-          {parsing ? "Parsing document..." : "Upload Document for AI Extraction"}
+          {parsing ? (statusText || "Parsing document...") : "Upload Document for AI Extraction"}
         </Button>
         <p className="text-xs text-muted-foreground">Supports .txt, .csv, .md, .json, .pdf, .docx files (max {MAX_FILE_SIZE_MB}MB). AI will extract requirements automatically.</p>
 

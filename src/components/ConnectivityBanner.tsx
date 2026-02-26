@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { WifiOff, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,61 +6,79 @@ import { cn } from "@/lib/utils";
 
 type Status = "online" | "offline" | "api-error" | "recovering";
 
+const DEMO_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 const ConnectivityBanner = () => {
   const [status, setStatus] = useState<Status>("online");
   const [checking, setChecking] = useState(false);
+  const consecutiveFailures = useRef(0);
 
-  const checkConnectivity = async () => {
+  const checkConnectivity = useCallback(async () => {
     setChecking(true);
 
-    // Check browser online status first
     if (!navigator.onLine) {
+      consecutiveFailures.current = 2;
       setStatus("offline");
       setChecking(false);
       return;
     }
 
     try {
-      // Lightweight query to check API connectivity
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
       const { error } = await supabase
         .from("requirements")
-        .select("id", { count: "exact", head: true });
+        .select("id")
+        .limit(1)
+        .abortSignal(controller.signal);
+
+      clearTimeout(timeout);
 
       if (error) {
-        setStatus("api-error");
+        consecutiveFailures.current++;
       } else {
+        consecutiveFailures.current = 0;
         setStatus((prev) => (prev !== "online" ? "recovering" : "online"));
       }
     } catch {
-      setStatus("api-error");
+      consecutiveFailures.current++;
     } finally {
+      // Only show error after 2 consecutive failures
+      if (consecutiveFailures.current >= 2) {
+        setStatus("api-error");
+      }
       setChecking(false);
     }
-  };
+  }, []);
 
-  // Listen for browser online/offline events
   useEffect(() => {
-    const goOffline = () => setStatus("offline");
+    const goOffline = () => {
+      consecutiveFailures.current = 2;
+      setStatus("offline");
+    };
     const goOnline = () => {
       setStatus("recovering");
+      consecutiveFailures.current = 0;
       checkConnectivity();
     };
 
     window.addEventListener("offline", goOffline);
     window.addEventListener("online", goOnline);
 
-    // Initial check
-    checkConnectivity();
+    // Initial check after 5s delay to not compete with page load
+    const initialTimeout = setTimeout(checkConnectivity, 5000);
 
-    // Periodic health check every 30s
-    const interval = setInterval(checkConnectivity, 30000);
+    // Periodic health check every 60s
+    const interval = setInterval(checkConnectivity, 60000);
 
     return () => {
       window.removeEventListener("offline", goOffline);
       window.removeEventListener("online", goOnline);
+      clearTimeout(initialTimeout);
       clearInterval(interval);
     };
-  }, []);
+  }, [checkConnectivity]);
 
   // Auto-dismiss "recovering" after 2s
   useEffect(() => {
