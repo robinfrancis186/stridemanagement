@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -10,21 +11,42 @@ serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { text, base64, fileName, fileType } = body;
+    const { text, base64, storagePath, fileName, fileType } = body;
 
-    if (!text && !base64) throw new Error("Either text or base64 file content is required");
-
-    // Reject oversized payloads (base64 is ~33% larger than binary)
-    const MAX_BASE64_SIZE = 20 * 1024 * 1024 * 1.34; // ~26.8MB base64 for 20MB file
-    if (base64 && base64.length > MAX_BASE64_SIZE) {
-      return new Response(
-        JSON.stringify({ error: "File too large. Maximum supported size is 20MB." }),
-        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (!text && !base64 && !storagePath) throw new Error("Either text, base64, or storagePath is required");
 
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    // If storagePath provided, download file from storage
+    let fileBase64 = base64;
+    if (storagePath && !fileBase64) {
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+      const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+      const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+      const { data: fileData, error: downloadError } = await supabase.storage
+        .from("requirement-files")
+        .download(storagePath);
+
+      if (downloadError || !fileData) throw new Error(`Failed to download file: ${downloadError?.message}`);
+
+      const arrayBuffer = await fileData.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      // Convert to base64
+      let binary = "";
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, i + chunkSize);
+        for (let j = 0; j < chunk.length; j++) {
+          binary += String.fromCharCode(chunk[j]);
+        }
+      }
+      fileBase64 = btoa(binary);
+
+      // Clean up temp file after download
+      supabase.storage.from("requirement-files").remove([storagePath]).catch(() => {});
+    }
 
     const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
 
@@ -42,10 +64,9 @@ Extract all identifiable requirements from the document. For each requirement, e
 
 Be thorough and extract every requirement you can identify.`;
 
-    // Build user message content - either text or multimodal with file
     let userContent: any;
 
-    if (base64 && (fileType === "pdf" || fileType === "docx")) {
+    if (fileBase64 && (fileType === "pdf" || fileType === "docx")) {
       const mimeType = fileType === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
       userContent = [
         { type: "text", text: `Extract all requirements from this uploaded ${fileType.toUpperCase()} document.` },
@@ -53,7 +74,7 @@ Be thorough and extract every requirement you can identify.`;
           type: "file",
           file: {
             filename: fileName || `document.${fileType}`,
-            file_data: `data:${mimeType};base64,${base64}`,
+            file_data: `data:${mimeType};base64,${fileBase64}`,
           },
         },
       ];
@@ -118,7 +139,8 @@ Be thorough and extract every requirement you can identify.`;
       const status = response.status;
       if (status === 429) return new Response(JSON.stringify({ error: "Rate limit exceeded." }), { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       if (status === 402) return new Response(JSON.stringify({ error: "AI credits exhausted." }), { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-      throw new Error("AI extraction failed");
+      const errText = await response.text().catch(() => "");
+      throw new Error(`AI extraction failed (${status}): ${errText.slice(0, 200)}`);
     }
 
     const aiResult = await response.json();

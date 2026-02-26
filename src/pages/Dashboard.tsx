@@ -28,22 +28,26 @@ interface Transition {
 const Dashboard = () => {
   const [requirements, setRequirements] = useState<Requirement[]>([]);
   const [transitions, setTransitions] = useState<Transition[]>([]);
+  const [allTransitions, setAllTransitions] = useState<Transition[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqRes, transRes] = await Promise.all([
+        const [reqRes, recentTransRes, allTransRes] = await Promise.all([
           supabase.from("requirements").select("*").order("created_at", { ascending: false }),
           supabase.from("state_transitions").select("*").order("created_at", { ascending: false }).limit(20),
+          supabase.from("state_transitions").select("*").order("created_at", { ascending: false }),
         ]);
 
         setRequirements((reqRes.data as Requirement[]) || []);
-        setTransitions((transRes.data as Transition[]) || []);
+        setTransitions((recentTransRes.data as Transition[]) || []);
+        setAllTransitions((allTransRes.data as Transition[]) || []);
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
         setRequirements([]);
         setTransitions([]);
+        setAllTransitions([]);
       } finally {
         setLoading(false);
       }
@@ -55,7 +59,6 @@ const Dashboard = () => {
   const totalCount = requirements.length;
   const p1Active = requirements.filter((r) => r.priority === "P1" && r.current_state !== "H-DOE-5").length;
   const productionReady = requirements.filter((r) => r.current_state === "H-DOE-5").length;
-  // Aging thresholds per phase (in days)
   const agingThresholds: Record<string, number> = {
     S: 14, "H-INT": 60, "H-DES": 90, "H-DOE": 45,
   };
@@ -70,27 +73,9 @@ const Dashboard = () => {
 
   const getThreshold = (state: string) => agingThresholds[getPhasePrefix(state)] || 30;
 
-  // Fetch all transitions for accurate aging calculation
-  const [allTransitions, setAllTransitions] = useState<Transition[]>([]);
-
-  useEffect(() => {
-    const fetchAllTransitions = async () => {
-      try {
-        const { data } = await supabase.from("state_transitions").select("*").order("created_at", { ascending: false });
-        setAllTransitions((data as Transition[]) || []);
-      } catch (error) {
-        console.error("Failed to load transition history:", error);
-        setAllTransitions([]);
-      }
-    };
-
-    fetchAllTransitions();
-  }, []);
-
   const agingItems = requirements
     .filter((r) => r.current_state !== "H-DOE-5")
     .map((r) => {
-      // Use the most recent transition date for this requirement, otherwise fall back to created_at
       const lastTransition = allTransitions.find((t) => t.requirement_id === r.id);
       const sinceDate = lastTransition ? new Date(lastTransition.created_at) : new Date(r.created_at);
       const daysInPhase = differenceInDays(new Date(), sinceDate);
@@ -103,7 +88,6 @@ const Dashboard = () => {
 
   const stuckItems = agingItems.length;
 
-  // Group requirements by state for pipeline
   const stateCounts: Record<string, number> = {};
   Object.keys(STATES).forEach((s) => (stateCounts[s] = 0));
   requirements.forEach((r) => {

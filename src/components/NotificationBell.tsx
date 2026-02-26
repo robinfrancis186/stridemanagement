@@ -8,6 +8,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 
+const DEMO_USER_ID = "00000000-0000-0000-0000-000000000000";
+
 interface Notification {
   id: string;
   title: string;
@@ -24,27 +26,34 @@ const NotificationBell = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
+  const isDemoUser = user?.id === DEMO_USER_ID;
+
   const fetchNotifications = async () => {
-    if (!user) return;
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(20);
-    setNotifications((data as Notification[]) || []);
+    if (!user || isDemoUser) return;
+    try {
+      const { data } = await supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      setNotifications((data as Notification[]) || []);
+    } catch {
+      // silently fail
+    }
   };
 
   useEffect(() => {
+    if (isDemoUser) return;
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
+    const interval = setInterval(fetchNotifications, 60000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, isDemoUser]);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
   const markAllRead = async () => {
-    if (!user) return;
+    if (!user || isDemoUser) return;
     await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
     fetchNotifications();
   };
