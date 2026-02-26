@@ -62,14 +62,23 @@ const CommitteeReviewPanel = ({ requirementId, currentState, isAdmin }: { requir
 
   useEffect(() => {
     const fetch = async () => {
-      const [revRes, decRes] = await Promise.all([
-        supabase.from("committee_reviews").select("*").eq("requirement_id", requirementId).order("created_at"),
-        supabase.from("committee_decisions").select("*").eq("requirement_id", requirementId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      ]);
-      setReviews((revRes.data as CommitteeReview[]) || []);
-      setDecision(decRes.data as CommitteeDecision | null);
-      setLoading(false);
+      try {
+        const [revRes, decRes] = await Promise.all([
+          supabase.from("committee_reviews").select("*").eq("requirement_id", requirementId).order("created_at"),
+          supabase.from("committee_decisions").select("*").eq("requirement_id", requirementId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        ]);
+
+        setReviews((revRes.data as CommitteeReview[]) || []);
+        setDecision(decRes.data as CommitteeDecision | null);
+      } catch (error) {
+        console.error("Failed to load committee panel data:", error);
+        setReviews([]);
+        setDecision(null);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, [requirementId]);
 

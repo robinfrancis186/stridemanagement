@@ -73,16 +73,29 @@ const RequirementDetail = () => {
   const [submitting, setSubmitting] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!id) return;
-    const [reqRes, transRes, fbRes] = await Promise.all([
-      supabase.from("requirements").select("*").eq("id", id).single(),
-      supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
-      supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
-    ]);
-    setReq(reqRes.data as Requirement | null);
-    setTransitions((transRes.data as Transition[]) || []);
-    setFeedbacks((fbRes.data as PhaseFeedback[]) || []);
-    setLoading(false);
+    if (!id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [reqRes, transRes, fbRes] = await Promise.all([
+        supabase.from("requirements").select("*").eq("id", id).single(),
+        supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
+        supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
+      ]);
+
+      setReq(reqRes.data as Requirement | null);
+      setTransitions((transRes.data as Transition[]) || []);
+      setFeedbacks((fbRes.data as PhaseFeedback[]) || []);
+    } catch (error) {
+      console.error("Failed to load requirement detail:", error);
+      setReq(null);
+      setTransitions([]);
+      setFeedbacks([]);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);

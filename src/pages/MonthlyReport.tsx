@@ -30,10 +30,17 @@ const MonthlyReport = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase.from("requirements").select("*");
-      setRequirements((data as Requirement[]) || []);
-      setLoading(false);
+      try {
+        const { data } = await supabase.from("requirements").select("*");
+        setRequirements((data as Requirement[]) || []);
+      } catch (error) {
+        console.error("Failed to load monthly report data:", error);
+        setRequirements([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, []);
 

@@ -57,15 +57,21 @@ const DesignathonManagement = () => {
   const [teamMembers, setTeamMembers] = useState("");
 
   const fetchData = async () => {
-    const [evRes, tmRes, rqRes] = await Promise.all([
-      supabase.from("designathon_events").select("*").order("created_at", { ascending: false }),
-      supabase.from("designathon_teams").select("*").order("created_at"),
-      supabase.from("requirements").select("id, title, current_state").like("current_state", "H-DES-%"),
-    ]);
-    setEvents((evRes.data as DesignathonEvent[]) || []);
-    setTeams((tmRes.data as Team[]) || []);
-    setRequirements((rqRes.data as Requirement[]) || []);
-    setLoading(false);
+    try {
+      const [evRes, tmRes, rqRes] = await Promise.all([
+        supabase.from("designathon_events").select("*").order("created_at", { ascending: false }),
+        supabase.from("designathon_teams").select("*").order("created_at"),
+        supabase.from("requirements").select("id, title, current_state").like("current_state", "H-DES-%"),
+      ]);
+
+      setEvents((evRes.data as DesignathonEvent[]) || []);
+      setTeams((tmRes.data as Team[]) || []);
+      setRequirements((rqRes.data as Requirement[]) || []);
+    } catch (error) {
+      console.error("Failed to load designathon data:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);

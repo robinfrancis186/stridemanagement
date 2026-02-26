@@ -32,14 +32,23 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchData = async () => {
-      const [reqRes, transRes] = await Promise.all([
-        supabase.from("requirements").select("*").order("created_at", { ascending: false }),
-        supabase.from("state_transitions").select("*").order("created_at", { ascending: false }).limit(20),
-      ]);
-      setRequirements((reqRes.data as Requirement[]) || []);
-      setTransitions((transRes.data as Transition[]) || []);
-      setLoading(false);
+      try {
+        const [reqRes, transRes] = await Promise.all([
+          supabase.from("requirements").select("*").order("created_at", { ascending: false }),
+          supabase.from("state_transitions").select("*").order("created_at", { ascending: false }).limit(20),
+        ]);
+
+        setRequirements((reqRes.data as Requirement[]) || []);
+        setTransitions((transRes.data as Transition[]) || []);
+      } catch (error) {
+        console.error("Failed to load dashboard data:", error);
+        setRequirements([]);
+        setTransitions([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetchData();
   }, []);
 
@@ -66,9 +75,15 @@ const Dashboard = () => {
 
   useEffect(() => {
     const fetchAllTransitions = async () => {
-      const { data } = await supabase.from("state_transitions").select("*").order("created_at", { ascending: false });
-      setAllTransitions((data as Transition[]) || []);
+      try {
+        const { data } = await supabase.from("state_transitions").select("*").order("created_at", { ascending: false });
+        setAllTransitions((data as Transition[]) || []);
+      } catch (error) {
+        console.error("Failed to load transition history:", error);
+        setAllTransitions([]);
+      }
     };
+
     fetchAllTransitions();
   }, []);
 
