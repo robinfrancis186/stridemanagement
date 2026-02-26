@@ -14,6 +14,15 @@ serve(async (req) => {
 
     if (!text && !base64) throw new Error("Either text or base64 file content is required");
 
+    // Reject oversized payloads (base64 is ~33% larger than binary)
+    const MAX_BASE64_SIZE = 20 * 1024 * 1024 * 1.34; // ~26.8MB base64 for 20MB file
+    if (base64 && base64.length > MAX_BASE64_SIZE) {
+      return new Response(
+        JSON.stringify({ error: "File too large. Maximum supported size is 20MB." }),
+        { status: 413, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
