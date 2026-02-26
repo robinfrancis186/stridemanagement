@@ -19,14 +19,22 @@ const VersionHistoryTab = ({ requirementId }: { requirementId: string }) => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase
-        .from("requirement_versions")
-        .select("*")
-        .eq("requirement_id", requirementId)
-        .order("created_at", { ascending: false });
-      setVersions((data as unknown as Version[]) || []);
-      setLoading(false);
+      try {
+        const { data } = await supabase
+          .from("requirement_versions")
+          .select("*")
+          .eq("requirement_id", requirementId)
+          .order("created_at", { ascending: false });
+
+        setVersions((data as unknown as Version[]) || []);
+      } catch (error) {
+        console.error("Failed to load version history:", error);
+        setVersions([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, [requirementId]);
 

@@ -48,14 +48,23 @@ const LeadershipDashboard = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const [reqRes, transRes] = await Promise.all([
-        supabase.from("requirements").select("*"),
-        supabase.from("state_transitions").select("*").order("created_at", { ascending: true }),
-      ]);
-      setRequirements((reqRes.data as Requirement[]) || []);
-      setTransitions((transRes.data as Transition[]) || []);
-      setLoading(false);
+      try {
+        const [reqRes, transRes] = await Promise.all([
+          supabase.from("requirements").select("*"),
+          supabase.from("state_transitions").select("*").order("created_at", { ascending: true }),
+        ]);
+
+        setRequirements((reqRes.data as Requirement[]) || []);
+        setTransitions((transRes.data as Transition[]) || []);
+      } catch (error) {
+        console.error("Failed to load leadership analytics:", error);
+        setRequirements([]);
+        setTransitions([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, []);
 

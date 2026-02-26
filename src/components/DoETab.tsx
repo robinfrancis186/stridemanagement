@@ -47,29 +47,38 @@ const DoETab = ({ requirementId, currentState, isAdmin }: DoETabProps) => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase
-        .from("doe_records")
-        .select("*")
-        .eq("requirement_id", requirementId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      try {
+        const { data } = await supabase
+          .from("doe_records")
+          .select("*")
+          .eq("requirement_id", requirementId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (data) {
-        const rec = data as unknown as DoERecord;
-        setRecord(rec);
-        setProtocol(rec.testing_protocol || "");
-        setSampleSize(rec.sample_size?.toString() || "");
-        setPreTest(Object.fromEntries(METRIC_KEYS.map(k => [k, (rec.pre_test_data?.[k] ?? "").toString()])));
-        setPostTest(Object.fromEntries(METRIC_KEYS.map(k => [k, (rec.post_test_data?.[k] ?? "").toString()])));
-        setResultsSummary(rec.results_summary || "");
-        setFeedback(rec.beneficiary_feedback || "");
-      } else {
+        if (data) {
+          const rec = data as unknown as DoERecord;
+          setRecord(rec);
+          setProtocol(rec.testing_protocol || "");
+          setSampleSize(rec.sample_size?.toString() || "");
+          setPreTest(Object.fromEntries(METRIC_KEYS.map(k => [k, (rec.pre_test_data?.[k] ?? "").toString()])));
+          setPostTest(Object.fromEntries(METRIC_KEYS.map(k => [k, (rec.post_test_data?.[k] ?? "").toString()])));
+          setResultsSummary(rec.results_summary || "");
+          setFeedback(rec.beneficiary_feedback || "");
+        } else {
+          setPreTest(Object.fromEntries(METRIC_KEYS.map(k => [k, ""])));
+          setPostTest(Object.fromEntries(METRIC_KEYS.map(k => [k, ""])));
+        }
+      } catch (error) {
+        console.error("Failed to load DoE data:", error);
+        setRecord(null);
         setPreTest(Object.fromEntries(METRIC_KEYS.map(k => [k, ""])));
         setPostTest(Object.fromEntries(METRIC_KEYS.map(k => [k, ""])));
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
+
     fetch();
   }, [requirementId]);
 

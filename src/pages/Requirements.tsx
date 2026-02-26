@@ -32,10 +32,17 @@ const Requirements = () => {
 
   useEffect(() => {
     const fetchRequirements = async () => {
-      const { data } = await supabase.from("requirements").select("*").order("created_at", { ascending: false });
-      setRequirements((data as Requirement[]) || []);
-      setLoading(false);
+      try {
+        const { data } = await supabase.from("requirements").select("*").order("created_at", { ascending: false });
+        setRequirements((data as Requirement[]) || []);
+      } catch (error) {
+        console.error("Failed to load requirements:", error);
+        setRequirements([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetchRequirements();
   }, []);
 

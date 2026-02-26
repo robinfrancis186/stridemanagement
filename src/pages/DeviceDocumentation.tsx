@@ -39,21 +39,37 @@ const DeviceDocumentation = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      if (!id) return;
-      const [rq, tr, fb, doe, dec] = await Promise.all([
-        supabase.from("requirements").select("*").eq("id", id).single(),
-        supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at"),
-        supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at"),
-        supabase.from("doe_records").select("*").eq("requirement_id", id).limit(1).maybeSingle(),
-        supabase.from("committee_decisions").select("*").eq("requirement_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
-      ]);
-      setReq(rq.data as Requirement | null);
-      setTransitions(tr.data || []);
-      setFeedbacks(fb.data || []);
-      setDoeRecord(doe.data);
-      setDecision(dec.data);
-      setLoading(false);
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [rq, tr, fb, doe, dec] = await Promise.all([
+          supabase.from("requirements").select("*").eq("id", id).single(),
+          supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at"),
+          supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at"),
+          supabase.from("doe_records").select("*").eq("requirement_id", id).limit(1).maybeSingle(),
+          supabase.from("committee_decisions").select("*").eq("requirement_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        ]);
+
+        setReq(rq.data as Requirement | null);
+        setTransitions(tr.data || []);
+        setFeedbacks(fb.data || []);
+        setDoeRecord(doe.data);
+        setDecision(dec.data);
+      } catch (error) {
+        console.error("Failed to load device documentation data:", error);
+        setReq(null);
+        setTransitions([]);
+        setFeedbacks([]);
+        setDoeRecord(null);
+        setDecision(null);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, [id]);
 

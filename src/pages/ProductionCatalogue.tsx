@@ -31,14 +31,22 @@ const ProductionCatalogue = () => {
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase
-        .from("requirements")
-        .select("*")
-        .eq("current_state", "H-DOE-5")
-        .order("updated_at", { ascending: false });
-      setRequirements((data as Requirement[]) || []);
-      setLoading(false);
+      try {
+        const { data } = await supabase
+          .from("requirements")
+          .select("*")
+          .eq("current_state", "H-DOE-5")
+          .order("updated_at", { ascending: false });
+
+        setRequirements((data as Requirement[]) || []);
+      } catch (error) {
+        console.error("Failed to load production catalogue:", error);
+        setRequirements([]);
+      } finally {
+        setLoading(false);
+      }
     };
+
     fetch();
   }, []);
 
