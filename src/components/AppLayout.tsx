@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import NotificationBell from "@/components/NotificationBell";
+import ConnectivityBanner from "@/components/ConnectivityBanner";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -82,9 +83,12 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       </aside>
 
       {/* Main content */}
-      <main className="ml-64 flex-1 p-6">
-        {children}
-      </main>
+      <div className="ml-64 flex-1 flex flex-col">
+        <ConnectivityBanner />
+        <main className="flex-1 p-6">
+          {children}
+        </main>
+      </div>
     </div>
   );
 };

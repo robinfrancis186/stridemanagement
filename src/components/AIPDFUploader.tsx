@@ -17,9 +17,23 @@ const AIPDFUploader = () => {
   const [importing, setImporting] = useState<Record<number, boolean>>({});
   const [imported, setImported] = useState<Record<number, string>>({});
 
+  const MAX_FILE_SIZE_MB = 20;
+  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      toast({
+        title: "File Too Large",
+        description: `Maximum file size is ${MAX_FILE_SIZE_MB}MB. Your file is ${(file.size / 1024 / 1024).toFixed(1)}MB. Please use a smaller or compressed file.`,
+        variant: "destructive",
+      });
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
 
     setParsing(true);
     setExtracted(null);
@@ -55,6 +69,7 @@ const AIPDFUploader = () => {
       toast({ title: "Parsing Failed", description: e.message, variant: "destructive" });
     } finally {
       setParsing(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -114,7 +129,7 @@ const AIPDFUploader = () => {
           {parsing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
           {parsing ? "Parsing document..." : "Upload Document for AI Extraction"}
         </Button>
-        <p className="text-xs text-muted-foreground">Supports .txt, .csv, .md, .json, .pdf, .docx files. AI will extract requirements automatically.</p>
+        <p className="text-xs text-muted-foreground">Supports .txt, .csv, .md, .json, .pdf, .docx files (max {MAX_FILE_SIZE_MB}MB). AI will extract requirements automatically.</p>
 
         {extracted?.requirements && (
           <div className="space-y-3 mt-4">
