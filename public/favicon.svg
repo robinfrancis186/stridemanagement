@@ -1,0 +1,21 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(100, 80)">
+    <!-- 4 Dots -->
+    <circle cx="0" cy="-60" r="14" fill="#d946ef" />
+    <circle cx="0" cy="60" r="14" fill="#d946ef" />
+    <circle cx="-60" cy="0" r="14" fill="#d946ef" />
+    <circle cx="60" cy="0" r="14" fill="#d946ef" />
+    
+    <!-- Left light blue chevron -->
+    <path d="M -15 -35 Q 0 -35 15 -15 Q 0 5 -15 5" fill="none" stroke="#7dd3fc" stroke-width="20" stroke-linecap="round" />
+    
+    <!-- Interlocking paths to form the shape -->
+    <path d="M -35 -35 C -10 -35, -10 -10, 0 0 C 10 10, 10 35, 35 35" fill="none" stroke="#7dd3fc" stroke-width="22" stroke-linecap="round" />
+    <path d="M -35 35 C -10 35, -10 10, 0 0 C 10 -10, 10 -35, 35 -35" fill="none" stroke="#d946ef" stroke-width="22" stroke-linecap="round" />
+    
+    <!-- Center white cutout to create the star shape -->
+    <path d="M 0 -20 Q 20 0 0 20 Q -20 0 0 -20 Z" fill="white" />
+  </g>
+  <!-- Text -->
+  <text x="100" y="180" font-family="system-ui, -apple-system, sans-serif" font-size="44" font-weight="900" fill="#0f172a" text-anchor="middle" letter-spacing="2">STRIDE</text>
+</svg>

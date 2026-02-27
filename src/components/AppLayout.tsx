@@ -11,7 +11,7 @@ import {
   Calendar,
   LogOut,
 } from "lucide-react";
-import strideLogo from "@/assets/stride-logo.png";
+import strideLogo from "@/assets/stride-logo.svg";
 import { cn } from "@/lib/utils";
 import NotificationBell from "@/components/NotificationBell";
 import ConnectivityBanner from "@/components/ConnectivityBanner";

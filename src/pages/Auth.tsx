@@ -138,9 +138,7 @@ const Auth = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl gradient-primary shadow-elevated">
-            <Zap className="h-7 w-7 text-primary-foreground" />
-          </div>
+          <img src="/favicon.svg" alt="STRIDE Logo" className="mx-auto mb-4 h-16 w-16" />
           <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
             STRIDE COE
           </h1>
