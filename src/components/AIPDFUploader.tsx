@@ -25,6 +25,12 @@ const AIPDFUploader = () => {
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
   const DIRECT_UPLOAD_THRESHOLD = 5 * 1024 * 1024; // 5MB
 
+  const parsePrice = (val: any) => {
+    if (val === null || val === undefined) return null;
+    const num = parseFloat(String(val).replace(/[^0-9.]/g, ''));
+    return isNaN(num) ? null : num;
+  };
+
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -110,16 +116,16 @@ Return your response as valid JSON with this structure:
     setImporting((prev) => ({ ...prev, [index]: true }));
     try {
       const docRef = await addDoc(collection(db, "requirements"), {
-        title: req.title || "Untitled Requirement",
-        description: req.description || "No description provided.",
+        title: String(req.title || "Untitled Requirement"),
+        description: String(req.description || "No description provided."),
         source_type: req.source_type || "OTHER",
         priority: req.priority || "P2",
         tech_level: req.tech_level || "LOW",
-        therapy_domains: req.therapy_domains || [],
-        disability_types: req.disability_types || [],
-        gap_flags: req.gap_flags || [],
-        market_price: req.market_price ?? null,
-        stride_target_price: req.stride_target_price ?? null,
+        therapy_domains: Array.isArray(req.therapy_domains) ? req.therapy_domains : [],
+        disability_types: Array.isArray(req.disability_types) ? req.disability_types : [],
+        gap_flags: Array.isArray(req.gap_flags) ? req.gap_flags : [],
+        market_price: parsePrice(req.market_price),
+        stride_target_price: parsePrice(req.stride_target_price),
         current_state: "S1",
         created_by: user?.uid || null,
         created_at: new Date().toISOString(),
@@ -165,16 +171,16 @@ Return your response as valid JSON with this structure:
       setImporting((prev) => ({ ...prev, [i]: true }));
       try {
         const docRef = await addDoc(collection(db, "requirements"), {
-          title: req.title || "Untitled Requirement",
-          description: req.description || "No description provided.",
+          title: String(req.title || "Untitled Requirement"),
+          description: String(req.description || "No description provided."),
           source_type: req.source_type || "OTHER",
           priority: req.priority || "P2",
           tech_level: req.tech_level || "LOW",
-          therapy_domains: req.therapy_domains || [],
-          disability_types: req.disability_types || [],
-          gap_flags: req.gap_flags || [],
-          market_price: req.market_price ?? null,
-          stride_target_price: req.stride_target_price ?? null,
+          therapy_domains: Array.isArray(req.therapy_domains) ? req.therapy_domains : [],
+          disability_types: Array.isArray(req.disability_types) ? req.disability_types : [],
+          gap_flags: Array.isArray(req.gap_flags) ? req.gap_flags : [],
+          market_price: parsePrice(req.market_price),
+          stride_target_price: parsePrice(req.stride_target_price),
           current_state: "S1",
           created_by: user?.uid || null,
           created_at: new Date().toISOString(),
@@ -250,8 +256,8 @@ Return your response as valid JSON with this structure:
               <div key={i} className="p-3 border rounded-lg space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-foreground">{req.title}</p>
-                    <p className="text-xs text-muted-foreground line-clamp-2">{req.description}</p>
+                    <p className="text-sm font-medium text-foreground">{String(req.title || 'Untitled')}</p>
+                    <p className="text-xs text-muted-foreground line-clamp-2">{String(req.description || '')}</p>
                   </div>
                   {imported[i] ? (
                     <Button size="sm" variant="ghost" onClick={() => navigate(`/requirements/${imported[i]}`)}>

@@ -10,6 +10,7 @@ import {
   Package,
   Calendar,
   LogOut,
+  Users,
 } from "lucide-react";
 import strideLogo from "@/assets/stride-logo.svg";
 import { cn } from "@/lib/utils";
@@ -76,6 +77,20 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
               </Link>
             );
           })}
+          {role === "coe_admin" && (
+            <Link
+              to="/admin/users"
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors mt-4",
+                location.pathname === "/admin/users"
+                  ? "bg-sidebar-accent text-sidebar-primary"
+                  : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              )}
+            >
+              <Users className="h-4 w-4" />
+              User Management
+            </Link>
+          )}
         </nav>
 
         <div className="border-t border-sidebar-border p-3">

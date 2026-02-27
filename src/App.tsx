@@ -19,6 +19,7 @@ const DesignathonManagement = lazy(() => import("@/pages/DesignathonManagement")
 const ProductionCatalogue = lazy(() => import("@/pages/ProductionCatalogue"));
 const DeviceDocumentation = lazy(() => import("@/pages/DeviceDocumentation"));
 const MonthlyReport = lazy(() => import("@/pages/MonthlyReport"));
+const UserManagement = lazy(() => import("@/pages/UserManagement"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -51,6 +52,7 @@ const App = () => (
               <Route path="/designathon" element={<ProtectedRoute><AppLayout><DesignathonManagement /></AppLayout></ProtectedRoute>} />
               <Route path="/analytics" element={<ProtectedRoute><AppLayout><LeadershipDashboard /></AppLayout></ProtectedRoute>} />
               <Route path="/reports" element={<ProtectedRoute><AppLayout><MonthlyReport /></AppLayout></ProtectedRoute>} />
+              <Route path="/admin/users" element={<ProtectedRoute><AppLayout><UserManagement /></AppLayout></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
