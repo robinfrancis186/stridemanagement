@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
 import { History } from "lucide-react";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/utils";
 
 interface Version {
   id: string;
@@ -20,13 +21,14 @@ const VersionHistoryTab = ({ requirementId }: { requirementId: string }) => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const { data } = await supabase
-          .from("requirement_versions")
-          .select("*")
-          .eq("requirement_id", requirementId)
-          .order("created_at", { ascending: false });
+        const q = query(
+          collection(db, "requirement_versions"),
+          where("requirement_id", "==", requirementId),
+          orderBy("created_at", "desc")
+        );
+        const snap = await getDocs(q);
 
-        setVersions((data as unknown as Version[]) || []);
+        setVersions(snap.docs.map(d => ({ id: d.id, ...d.data() })) as unknown as Version[]);
       } catch (error) {
         console.error("Failed to load version history:", error);
         setVersions([]);

@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db, functions } from "@/lib/firebase";
+import { doc, getDoc, collection, query, where, orderBy, getDocs, updateDoc, addDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -79,15 +81,15 @@ const RequirementDetail = () => {
     }
 
     try {
-      const [reqRes, transRes, fbRes] = await Promise.all([
-        supabase.from("requirements").select("*").eq("id", id).single(),
-        supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
-        supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at", { ascending: true }),
+      const [reqSnap, transSnap, fbSnap] = await Promise.all([
+        getDoc(doc(db, "requirements", id)),
+        getDocs(query(collection(db, "state_transitions"), where("requirement_id", "==", id), orderBy("created_at", "asc"))),
+        getDocs(query(collection(db, "phase_feedbacks"), where("requirement_id", "==", id), orderBy("created_at", "asc"))),
       ]);
 
-      setReq(reqRes.data as Requirement | null);
-      setTransitions((transRes.data as Transition[]) || []);
-      setFeedbacks((fbRes.data as PhaseFeedback[]) || []);
+      setReq(reqSnap.exists() ? { id: reqSnap.id, ...reqSnap.data() } as Requirement : null);
+      setTransitions(transSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Transition[]);
+      setFeedbacks(fbSnap.docs.map(d => ({ id: d.id, ...d.data() })) as PhaseFeedback[]);
     } catch (error) {
       console.error("Failed to load requirement detail:", error);
       setReq(null);
@@ -124,8 +126,9 @@ const RequirementDetail = () => {
 
   const handlePathAssign = async (path: "INTERNAL" | "DESIGNATHON", justification: string) => {
     setSubmitting(true);
-    const { error } = await supabase.from("requirements").update({ path_assignment: path }).eq("id", req.id);
-    if (error) {
+    try {
+      await updateDoc(doc(db, "requirements", req.id), { path_assignment: path });
+    } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
       setSubmitting(false);
       return;
@@ -145,48 +148,39 @@ const RequirementDetail = () => {
     const fromState = req.current_state;
     const toState = selectedNextState;
 
-    // Insert feedback
-    const { error: fbErr } = await supabase.from("phase_feedbacks").insert({
-      requirement_id: req.id,
-      from_state: fromState,
-      to_state: toState,
-      phase_notes: data.phaseNotes,
-      blockers_resolved: data.blockersResolved,
-      key_decisions: data.keyDecisions,
-      phase_specific_data: data.phaseSpecificData,
-      submitted_by: user?.id,
-    });
+    try {
+      // Insert feedback
+      await addDoc(collection(db, "phase_feedbacks"), {
+        requirement_id: req.id,
+        from_state: fromState,
+        to_state: toState,
+        phase_notes: data.phaseNotes,
+        blockers_resolved: data.blockersResolved,
+        key_decisions: data.keyDecisions,
+        phase_specific_data: data.phaseSpecificData,
+        submitted_by: user?.uid,
+        created_at: new Date().toISOString()
+      });
 
-    if (fbErr) {
-      toast({ title: "Error saving feedback", description: fbErr.message, variant: "destructive" });
-      setSubmitting(false);
-      return;
-    }
+      // Insert transition
+      await addDoc(collection(db, "state_transitions"), {
+        requirement_id: req.id,
+        from_state: fromState,
+        to_state: toState,
+        transitioned_by: user?.uid,
+        notes: data.phaseNotes.slice(0, 200),
+        created_at: new Date().toISOString()
+      });
 
-    // Insert transition
-    const { error: trErr } = await supabase.from("state_transitions").insert({
-      requirement_id: req.id,
-      from_state: fromState,
-      to_state: toState,
-      transitioned_by: user?.id,
-      notes: data.phaseNotes.slice(0, 200),
-    });
-
-    if (trErr) {
-      toast({ title: "Error recording transition", description: trErr.message, variant: "destructive" });
-      setSubmitting(false);
-      return;
-    }
-
-    // Update requirement state (and increment revision if revision loop)
-    const isRevision = (toState === "H-INT-1" || toState === "H-DES-1") && fromState === "H-DOE-4";
-    const { error: reqErr } = await supabase.from("requirements").update({
-      current_state: toState,
-      ...(isRevision ? { revision_number: req.revision_number + 1 } : {}),
-    }).eq("id", req.id);
-
-    if (reqErr) {
-      toast({ title: "Error updating state", description: reqErr.message, variant: "destructive" });
+      // Update requirement state (and increment revision if revision loop)
+      const isRevision = (toState === "H-INT-1" || toState === "H-DES-1") && fromState === "H-DOE-4";
+      await updateDoc(doc(db, "requirements", req.id), {
+        current_state: toState,
+        updated_at: new Date().toISOString(),
+        ...(isRevision ? { revision_number: req.revision_number + 1 } : {}),
+      });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
       setSubmitting(false);
       return;
     }
@@ -199,12 +193,12 @@ const RequirementDetail = () => {
     // Auto-generate Device Documentation Package when reaching production-ready
     if (toState === "H-DOE-5") {
       toast({ title: "Generating Device Documentation", description: "AI is automatically generating the Device Documentation Package..." });
-      supabase.functions.invoke("ai-device-doc", { body: { requirementId: req.id } }).then(({ data, error }) => {
-        if (error || data?.error) {
-          toast({ title: "Auto Doc Generation Failed", description: error?.message || data?.error, variant: "destructive" });
-        } else {
+      import("@/lib/ai-actions").then(({ aiDeviceDoc }) => {
+        aiDeviceDoc(req.id).then(({ document }) => {
           toast({ title: "Device Documentation Ready", description: "AI has automatically generated the Device Documentation Package. Check the AI Actions panel to view it." });
-        }
+        }).catch(error => {
+          toast({ title: "Auto Doc Generation Failed", description: error.message, variant: "destructive" });
+        });
       });
     }
   };

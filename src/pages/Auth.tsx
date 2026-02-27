@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth, db } from "@/lib/firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, signOut } from "firebase/auth";
+import { doc, setDoc, getDocs, collection } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
 import { Zap } from "lucide-react";
-import { clearCorruptAuthTokenKeys, clearSupabaseStorageKeys } from "@/lib/authStorage";
 
 const Auth = () => {
   const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
@@ -17,13 +18,8 @@ const Auth = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    clearCorruptAuthTokenKeys();
-  }, []);
-
   const recoverFromFetchFailure = async () => {
-    clearSupabaseStorageKeys();
-    await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    await signOut(auth).catch(() => { });
   };
 
   const withAuthRecovery = async <T,>(request: () => Promise<T>): Promise<T> => {
@@ -45,12 +41,7 @@ const Auth = () => {
 
     try {
       if (mode === "forgot") {
-        const { error } = await withAuthRecovery(() =>
-          supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/reset-password`,
-          })
-        );
-        if (error) throw error;
+        await withAuthRecovery(() => sendPasswordResetEmail(auth, email));
 
         toast({
           title: "Check your email",
@@ -58,25 +49,13 @@ const Auth = () => {
         });
         setMode("login");
       } else if (mode === "login") {
-        const { error } = await withAuthRecovery(() =>
-          supabase.auth.signInWithPassword({ email, password })
-        );
-        if (error) throw error;
+        await withAuthRecovery(() => signInWithEmailAndPassword(auth, email, password));
         navigate("/");
       } else {
-        const { data, error } = await withAuthRecovery(() =>
-          supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { full_name: fullName },
-              emailRedirectTo: window.location.origin,
-            },
-          })
-        );
-        if (error) throw error;
+        const userCredential = await withAuthRecovery(() => createUserWithEmailAndPassword(auth, email, password));
+        const user = userCredential.user;
 
-        if (!data.user) {
+        if (!user) {
           toast({
             title: "Account creation failed",
             description: "Please try again.",
@@ -85,41 +64,33 @@ const Auth = () => {
           return;
         }
 
-        if (!data.session) {
-          toast({
-            title: "Account created",
-            description: "Please verify your email before signing in.",
+        try {
+          await setDoc(doc(db, "profiles", user.uid), {
+            user_id: user.uid,
+            full_name: fullName,
           });
-          setMode("login");
-          return;
-        }
-
-        const { error: profileError } = await supabase.from("profiles").insert({
-          user_id: data.user.id,
-          full_name: fullName,
-        });
-
-        if (profileError) {
+        } catch (profileError: any) {
           console.warn("Profile creation skipped:", profileError.message);
         }
 
-        const { count, error: countError } = await supabase
-          .from("user_roles")
-          .select("id", { count: "exact", head: true });
-
-        if (!countError && count === 0) {
-          const { error: roleError } = await supabase.from("user_roles").insert({
-            user_id: data.user.id,
-            role: "coe_admin",
-          });
-
-          if (!roleError) {
+        try {
+          const rolesSnap = await getDocs(collection(db, "user_roles"));
+          if (rolesSnap.empty) {
+            await setDoc(doc(db, "user_roles", user.uid), {
+              user_id: user.uid,
+              role: "coe_admin",
+            });
             toast({
               title: "Admin account created",
               description: "You've been assigned as the first COE Admin.",
             });
+          } else {
+            toast({
+              title: "Account created",
+              description: "Your account is ready. An admin can assign your role.",
+            });
           }
-        } else {
+        } catch (roleError: any) {
           toast({
             title: "Account created",
             description: "Your account is ready. An admin can assign your role.",
@@ -130,6 +101,7 @@ const Auth = () => {
       }
     } catch (error: any) {
       const rawMessage = error?.message || "";
+      const errorCode = error?.code || "";
       const isNetworkIssue =
         rawMessage === "Failed to fetch" ||
         rawMessage === "Load failed" ||
@@ -139,11 +111,22 @@ const Auth = () => {
         await recoverFromFetchFailure();
       }
 
+      const friendlyMessages: Record<string, string> = {
+        "auth/email-already-in-use": "An account with this email already exists. Try signing in instead.",
+        "auth/invalid-email": "Please enter a valid email address.",
+        "auth/weak-password": "Password must be at least 6 characters.",
+        "auth/user-not-found": "No account found with this email.",
+        "auth/wrong-password": "Incorrect password. Please try again.",
+        "auth/invalid-credential": "Invalid email or password. Please try again.",
+        "auth/too-many-requests": "Too many failed attempts. Please wait a moment and try again.",
+        "auth/configuration-not-found": "Auth is not configured. Please enable Email/Password in Firebase Console.",
+      };
+
       toast({
         title: "Error",
         description: isNetworkIssue
           ? "Network error — we reset your session locally. Please try again."
-          : rawMessage || "An error occurred",
+          : friendlyMessages[errorCode] || rawMessage || "An error occurred",
         variant: "destructive",
       });
     } finally {
@@ -175,8 +158,8 @@ const Auth = () => {
               {mode === "login"
                 ? "Enter your credentials to access the dashboard"
                 : mode === "signup"
-                ? "Register for a new COE account"
-                : "Enter your email to receive a reset link"}
+                  ? "Register for a new COE account"
+                  : "Enter your email to receive a reset link"}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -222,43 +205,13 @@ const Auth = () => {
                 {loading
                   ? "Please wait..."
                   : mode === "login"
-                  ? "Sign In"
-                  : mode === "signup"
-                  ? "Create Account"
-                  : "Send Reset Link"}
+                    ? "Sign In"
+                    : mode === "signup"
+                      ? "Create Account"
+                      : "Send Reset Link"}
               </Button>
 
-              {mode === "login" && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  disabled={loading}
-                  onClick={async () => {
-                    setLoading(true);
-                    try {
-                      const { error } = await withAuthRecovery(() =>
-                        supabase.auth.signInWithPassword({
-                          email: "demo@stride-coe.com",
-                          password: "demo1234",
-                        })
-                      );
-                      if (error) throw error;
-                      navigate("/");
-                    } catch (error: any) {
-                      toast({
-                        title: "Demo login failed",
-                        description: error?.message || "Could not sign in with demo account. It may not exist yet.",
-                        variant: "destructive",
-                      });
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  Try Demo
-                </Button>
-              )}
+
             </form>
             <div className="mt-4 space-y-2 text-center text-sm">
               {mode === "login" && (
@@ -278,8 +231,8 @@ const Auth = () => {
                 {mode === "signup"
                   ? "Already have an account? Sign in"
                   : mode === "login"
-                  ? "Need an account? Sign up"
-                  : "Back to sign in"}
+                    ? "Need an account? Sign up"
+                    : "Back to sign in"}
               </button>
             </div>
           </CardContent>

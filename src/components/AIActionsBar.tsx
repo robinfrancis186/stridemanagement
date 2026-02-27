@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { aiClassify, aiDoeTemplate, aiDeviceDoc } from "@/lib/ai-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -23,14 +23,9 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenera
     setClassifying(true);
     setLastResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-classify", {
-        body: { requirementId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      
-      setLastResult({ type: "classification", data: data.classification });
-      toast({ title: "AI Classification Complete", description: data.classification.reasoning });
+      const { classification } = await aiClassify(requirementId);
+      setLastResult({ type: "classification", data: classification });
+      toast({ title: "AI Classification Complete", description: classification.reasoning });
       onClassified?.();
     } catch (e: any) {
       toast({ title: "Classification Failed", description: e.message, variant: "destructive" });
@@ -43,13 +38,8 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenera
     setGeneratingDoe(true);
     setLastResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-doe-template", {
-        body: { requirementId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setLastResult({ type: "doe", data: data.template });
+      const { template } = await aiDoeTemplate(requirementId);
+      setLastResult({ type: "doe", data: template });
       toast({ title: "DoE Template Generated", description: "A new DoE record has been created with AI-generated protocols." });
       onDoeGenerated?.();
     } catch (e: any) {
@@ -63,13 +53,8 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenera
     setGeneratingDoc(true);
     setLastResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-device-doc", {
-        body: { requirementId },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setLastResult({ type: "doc", data: data.document });
+      const { document } = await aiDeviceDoc(requirementId);
+      setLastResult({ type: "doc", data: document });
       toast({ title: "Device Doc Package Generated", description: "Full documentation package is ready." });
       onDocGenerated?.();
     } catch (e: any) {
@@ -85,7 +70,7 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenera
         <div className="flex items-center gap-2 mb-1">
           <Brain className="h-4 w-4 text-primary" />
           <span className="text-sm font-semibold text-foreground">AI Agent Actions</span>
-          <Badge variant="secondary" className="text-[10px]">Powered by Lovable AI</Badge>
+          <Badge variant="secondary" className="text-[10px]">Powered by STRIDE AI</Badge>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" onClick={handleClassify} disabled={classifying}>
@@ -115,7 +100,7 @@ const AIActionsBar = ({ requirementId, onClassified, onDoeGenerated, onDocGenera
                 <Badge key={d} variant="outline">{d}</Badge>
               ))}
               {lastResult.data.gap_flags?.map((g: string) => (
-                <Badge key={g} className={g === "RED" ? "bg-destructive text-destructive-foreground" : "bg-info text-info-foreground"}>{g}</Badge>
+                <Badge className={g === "RED" ? "bg-destructive text-destructive-foreground" : "bg-info text-info-foreground"} key={g}>{g}</Badge>
               ))}
             </div>
             <p className="text-muted-foreground text-xs">{lastResult.data.reasoning}</p>

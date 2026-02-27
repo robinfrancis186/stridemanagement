@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,11 +33,9 @@ const ProductionCatalogue = () => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const { data } = await supabase
-          .from("requirements")
-          .select("*")
-          .eq("current_state", "H-DOE-5")
-          .order("updated_at", { ascending: false });
+        const q = query(collection(db, "requirements"), where("current_state", "==", "H-DOE-5"), orderBy("updated_at", "desc"));
+        const snap = await getDocs(q);
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         setRequirements((data as Requirement[]) || []);
       } catch (error) {

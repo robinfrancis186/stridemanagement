@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, getDocs, addDoc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -58,15 +59,16 @@ const DesignathonManagement = () => {
 
   const fetchData = async () => {
     try {
-      const [evRes, tmRes, rqRes] = await Promise.all([
-        supabase.from("designathon_events").select("*").order("created_at", { ascending: false }),
-        supabase.from("designathon_teams").select("*").order("created_at"),
-        supabase.from("requirements").select("id, title, current_state").like("current_state", "H-DES-%"),
+      const [evSnap, tmSnap, rqSnap] = await Promise.all([
+        getDocs(query(collection(db, "designathon_events"), orderBy("created_at", "desc"))),
+        getDocs(query(collection(db, "designathon_teams"), orderBy("created_at", "asc"))),
+        getDocs(collection(db, "requirements")), // filter client-side since 'like' is not supported easily
       ]);
 
-      setEvents((evRes.data as DesignathonEvent[]) || []);
-      setTeams((tmRes.data as Team[]) || []);
-      setRequirements((rqRes.data as Requirement[]) || []);
+      setEvents(evSnap.docs.map(d => ({ id: d.id, ...d.data() })) as DesignathonEvent[]);
+      setTeams(tmSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]);
+      const allReqs = rqSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Requirement[];
+      setRequirements(allReqs.filter(r => r.current_state.startsWith("H-DES-")));
     } catch (error) {
       console.error("Failed to load designathon data:", error);
     } finally {
@@ -77,36 +79,40 @@ const DesignathonManagement = () => {
   useEffect(() => { fetchData(); }, []);
 
   const handleCreateEvent = async () => {
-    const { error } = await supabase.from("designathon_events").insert({
-      title: eventTitle,
-      description: eventDesc || null,
-    });
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await addDoc(collection(db, "designathon_events"), {
+        title: eventTitle,
+        description: eventDesc || null,
+        status: "active",
+        created_at: new Date().toISOString()
+      });
       toast({ title: "Event Created" });
       setEventModalOpen(false);
       setEventTitle("");
       setEventDesc("");
       fetchData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 
   const handleAddTeam = async () => {
     if (!selectedEventId) return;
-    const { error } = await supabase.from("designathon_teams").insert({
-      event_id: selectedEventId,
-      team_name: teamName,
-      members: teamMembers.split(",").map(m => m.trim()).filter(Boolean),
-    });
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await addDoc(collection(db, "designathon_teams"), {
+        event_id: selectedEventId,
+        team_name: teamName,
+        members: teamMembers.split(",").map(m => m.trim()).filter(Boolean),
+        score: null,
+        created_at: new Date().toISOString()
+      });
       toast({ title: "Team Added" });
       setTeamModalOpen(false);
       setTeamName("");
       setTeamMembers("");
       fetchData();
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
   };
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, limit, getDocs, addDoc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -63,13 +64,13 @@ const CommitteeReviewPanel = ({ requirementId, currentState, isAdmin }: { requir
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [revRes, decRes] = await Promise.all([
-          supabase.from("committee_reviews").select("*").eq("requirement_id", requirementId).order("created_at"),
-          supabase.from("committee_decisions").select("*").eq("requirement_id", requirementId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+        const [revSnap, decSnap] = await Promise.all([
+          getDocs(query(collection(db, "committee_reviews"), where("requirement_id", "==", requirementId), orderBy("created_at", "asc"))),
+          getDocs(query(collection(db, "committee_decisions"), where("requirement_id", "==", requirementId), orderBy("created_at", "desc"), limit(1))),
         ]);
 
-        setReviews((revRes.data as CommitteeReview[]) || []);
-        setDecision(decRes.data as CommitteeDecision | null);
+        setReviews(revSnap.docs.map(d => ({ id: d.id, ...d.data() })) as CommitteeReview[]);
+        setDecision(decSnap.empty ? null : { id: decSnap.docs[0].id, ...decSnap.docs[0].data() } as CommitteeDecision);
       } catch (error) {
         console.error("Failed to load committee panel data:", error);
         setReviews([]);
@@ -96,26 +97,26 @@ const CommitteeReviewPanel = ({ requirementId, currentState, isAdmin }: { requir
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase.from("committee_reviews").insert({
-      requirement_id: requirementId,
-      reviewer_id: user?.id,
-      user_need_score: userNeed,
-      technical_feasibility_score: techFeasibility,
-      doe_results_score: doeResults,
-      cost_effectiveness_score: costEff,
-      safety_score: safety,
-      weighted_total: Math.round(weightedTotal * 10) / 10,
-      feedback_text: feedbackText || null,
-      recommendation,
-      conditions: conditions || null,
-    });
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await addDoc(collection(db, "committee_reviews"), {
+        requirement_id: requirementId,
+        reviewer_id: user?.uid,
+        user_need_score: userNeed,
+        technical_feasibility_score: techFeasibility,
+        doe_results_score: doeResults,
+        cost_effectiveness_score: costEff,
+        safety_score: safety,
+        weighted_total: Math.round(weightedTotal * 10) / 10,
+        feedback_text: feedbackText || null,
+        recommendation,
+        conditions: conditions || null,
+        created_at: new Date().toISOString()
+      });
       toast({ title: "Review Submitted" });
-      // Refresh
-      const { data } = await supabase.from("committee_reviews").select("*").eq("requirement_id", requirementId).order("created_at");
-      setReviews((data as CommitteeReview[]) || []);
+      const snap = await getDocs(query(collection(db, "committee_reviews"), where("requirement_id", "==", requirementId), orderBy("created_at", "asc")));
+      setReviews(snap.docs.map(d => ({ id: d.id, ...d.data() })) as CommitteeReview[]);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
     setSubmitting(false);
   };
@@ -123,19 +124,20 @@ const CommitteeReviewPanel = ({ requirementId, currentState, isAdmin }: { requir
   const handleSubmitDecision = async () => {
     if (!decisionChoice) return;
     setSubmitting(true);
-    const { error } = await supabase.from("committee_decisions").insert({
-      requirement_id: requirementId,
-      decision: decisionChoice,
-      revision_instructions: revisionInstructions || null,
-      conditions: decisionConditions || null,
-      decided_by: user?.id!,
-    });
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      await addDoc(collection(db, "committee_decisions"), {
+        requirement_id: requirementId,
+        decision: decisionChoice,
+        revision_instructions: revisionInstructions || null,
+        conditions: decisionConditions || null,
+        decided_by: user?.uid!,
+        created_at: new Date().toISOString()
+      });
       toast({ title: "Decision Recorded" });
-      const { data } = await supabase.from("committee_decisions").select("*").eq("requirement_id", requirementId).order("created_at", { ascending: false }).limit(1).maybeSingle();
-      setDecision(data as CommitteeDecision | null);
+      const snap = await getDocs(query(collection(db, "committee_decisions"), where("requirement_id", "==", requirementId), orderBy("created_at", "desc"), limit(1)));
+      setDecision(snap.empty ? null : { id: snap.docs[0].id, ...snap.docs[0].data() } as CommitteeDecision);
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
     setSubmitting(false);
   };

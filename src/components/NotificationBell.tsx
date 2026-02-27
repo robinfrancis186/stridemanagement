@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, limit, getDocs, updateDoc, doc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,18 +27,18 @@ const NotificationBell = () => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
 
-  const isDemoUser = user?.id === DEMO_USER_ID;
+  const isDemoUser = user?.uid === DEMO_USER_ID;
 
   const fetchNotifications = async () => {
     if (!user || isDemoUser) return;
     try {
-      const { data } = await supabase
-        .from("notifications")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      setNotifications((data as Notification[]) || []);
+      const snap = await getDocs(query(
+        collection(db, "notifications"),
+        where("user_id", "==", user.uid),
+        orderBy("created_at", "desc"),
+        limit(20)
+      ));
+      setNotifications(snap.docs.map(d => ({ id: d.id, ...d.data() })) as Notification[]);
     } catch {
       // silently fail
     }
@@ -54,7 +55,8 @@ const NotificationBell = () => {
 
   const markAllRead = async () => {
     if (!user || isDemoUser) return;
-    await supabase.from("notifications").update({ read: true }).eq("user_id", user.id).eq("read", false);
+    const snap = await getDocs(query(collection(db, "notifications"), where("user_id", "==", user.uid), where("read", "==", false)));
+    await Promise.all(snap.docs.map(d => updateDoc(doc(db, "notifications", d.id), { read: true })));
     fetchNotifications();
   };
 
@@ -64,7 +66,7 @@ const NotificationBell = () => {
       setOpen(false);
     }
     if (!n.read) {
-      supabase.from("notifications").update({ read: true }).eq("id", n.id).then(() => fetchNotifications());
+      updateDoc(doc(db, "notifications", n.id), { read: true }).then(() => fetchNotifications());
     }
   };
 

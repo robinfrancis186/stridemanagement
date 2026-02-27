@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { aiMonthlyReport } from "@/lib/ai-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
@@ -18,15 +18,11 @@ const AIReportGenerator = ({ month }: AIReportGeneratorProps) => {
     setGenerating(true);
     setReport(null);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-monthly-report", {
-        body: { month },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-
-      setReport(data.report);
+      const { report: reportContent } = await aiMonthlyReport(month);
+      setReport(reportContent);
       toast({ title: "Report Generated", description: `Leadership report for ${month} is ready.` });
     } catch (e: any) {
+      console.error(e);
       toast({ title: "Report Generation Failed", description: e.message, variant: "destructive" });
     } finally {
       setGenerating(false);

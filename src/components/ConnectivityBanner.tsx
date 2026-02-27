@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, limit, getDocs } from "firebase/firestore";
 import { WifiOff, RefreshCw, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -27,19 +28,16 @@ const ConnectivityBanner = () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 5000);
 
-      const { error } = await supabase
-        .from("requirements")
-        .select("id")
-        .limit(1)
-        .abortSignal(controller.signal);
-
-      clearTimeout(timeout);
-
-      if (error) {
-        consecutiveFailures.current++;
-      } else {
+      try {
+        // Firestore doesn't accept abort signals directly in the same way, but we will wrap it with a timeout.
+        // If the internet is down, it'll likely throw and be caught.
+        await getDocs(query(collection(db, "requirements"), limit(1)));
+        clearTimeout(timeout);
         consecutiveFailures.current = 0;
         setStatus((prev) => (prev !== "online" ? "recovering" : "online"));
+      } catch (error) {
+        clearTimeout(timeout);
+        consecutiveFailures.current++;
       }
     } catch {
       consecutiveFailures.current++;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, orderBy, limit, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { STATES, type StateKey } from "@/lib/constants";
@@ -34,15 +35,15 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [reqRes, recentTransRes, allTransRes] = await Promise.all([
-          supabase.from("requirements").select("*").order("created_at", { ascending: false }),
-          supabase.from("state_transitions").select("*").order("created_at", { ascending: false }).limit(20),
-          supabase.from("state_transitions").select("*").order("created_at", { ascending: false }),
+        const [reqSnap, recentTransSnap, allTransSnap] = await Promise.all([
+          getDocs(query(collection(db, "requirements"), orderBy("created_at", "desc"))),
+          getDocs(query(collection(db, "state_transitions"), orderBy("created_at", "desc"), limit(20))),
+          getDocs(query(collection(db, "state_transitions"), orderBy("created_at", "desc"))),
         ]);
 
-        setRequirements((reqRes.data as Requirement[]) || []);
-        setTransitions((recentTransRes.data as Transition[]) || []);
-        setAllTransitions((allTransRes.data as Transition[]) || []);
+        setRequirements(reqSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Requirement[]);
+        setTransitions(recentTransSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Transition[]);
+        setAllTransitions(allTransSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Transition[]);
       } catch (error) {
         console.error("Failed to load dashboard data:", error);
         setRequirements([]);
@@ -149,10 +150,10 @@ const Dashboard = () => {
               const width = maxCount > 0 ? Math.max((count / maxCount) * 100, 4) : 4;
               const bgColor =
                 state.color === "info" ? "bg-info" :
-                state.color === "warning" ? "bg-warning" :
-                state.color === "accent" ? "bg-accent" :
-                state.color === "secondary" ? "bg-secondary" :
-                "bg-success";
+                  state.color === "warning" ? "bg-warning" :
+                    state.color === "accent" ? "bg-accent" :
+                      state.color === "secondary" ? "bg-secondary" :
+                        "bg-success";
               return (
                 <div key={key} className="flex items-center gap-3">
                   <span className="w-20 text-xs font-medium text-muted-foreground shrink-0">{key}</span>
@@ -262,18 +263,16 @@ const Dashboard = () => {
                     to={`/requirements/${item.id}`}
                     className="flex items-center gap-3 text-sm p-2 rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <AlertTriangle className={`h-4 w-4 shrink-0 ${
-                      severity === "destructive" ? "text-destructive" :
-                      severity === "warning" ? "text-warning" : "text-muted-foreground"
-                    }`} />
+                    <AlertTriangle className={`h-4 w-4 shrink-0 ${severity === "destructive" ? "text-destructive" :
+                        severity === "warning" ? "text-warning" : "text-muted-foreground"
+                      }`} />
                     <span className="flex-1 font-medium truncate">{item.title}</span>
                     <Badge variant="outline" className="text-[10px]">
                       {item.current_state} — {si?.label || item.current_state}
                     </Badge>
-                    <Badge className={`text-[10px] ${
-                      severity === "destructive" ? "bg-destructive text-destructive-foreground" :
-                      severity === "warning" ? "bg-warning text-warning-foreground" : "bg-secondary text-secondary-foreground"
-                    }`}>
+                    <Badge className={`text-[10px] ${severity === "destructive" ? "bg-destructive text-destructive-foreground" :
+                        severity === "warning" ? "bg-warning text-warning-foreground" : "bg-secondary text-secondary-foreground"
+                      }`}>
                       {item.daysInPhase}d / {item.threshold}d limit
                     </Badge>
                     <span className="text-xs text-destructive font-medium">+{item.overdue}d overdue</span>

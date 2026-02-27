@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   ListChecks,
@@ -9,11 +9,14 @@ import {
   Trophy,
   Package,
   Calendar,
+  LogOut,
 } from "lucide-react";
 import strideLogo from "@/assets/stride-logo.png";
 import { cn } from "@/lib/utils";
 import NotificationBell from "@/components/NotificationBell";
 import ConnectivityBanner from "@/components/ConnectivityBanner";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 const navItems = [
   { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -27,6 +30,16 @@ const navItems = [
 
 const AppLayout = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, role, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
+
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "User";
+  const displayRole = role || "member";
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -45,7 +58,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
 
         <nav className="flex-1 space-y-1 p-3 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive = location.pathname === item.to || 
+            const isActive = location.pathname === item.to ||
               (item.to !== "/" && location.pathname.startsWith(item.to));
             return (
               <Link
@@ -72,12 +85,21 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-xs font-medium text-sidebar-foreground">
-                Demo User
+                {displayName}
               </p>
               <p className="text-[10px] text-sidebar-foreground/50 uppercase tracking-wider">
-                COE ADMIN
+                {displayRole}
               </p>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-sidebar-foreground/50 hover:text-sidebar-foreground"
+              onClick={handleSignOut}
+              title="Sign Out"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
       </aside>

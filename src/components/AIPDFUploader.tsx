@@ -1,5 +1,8 @@
 import { useState, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db, functions, storage } from "@/lib/firebase";
+import { collection, addDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,46 +44,61 @@ const AIPDFUploader = () => {
 
     try {
       const ext = file.name.split(".").pop()?.toLowerCase();
-      let body: any;
+      setStatusText("Parsing document with AI...");
 
-      if ((ext === "pdf" || ext === "docx") && file.size > DIRECT_UPLOAD_THRESHOLD) {
-        // Large file: upload to storage first, then pass path
-        setStatusText("Uploading file...");
-        const storagePath = `ai-parse/${Date.now()}-${file.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from("requirement-files")
-          .upload(storagePath, file);
+      const { getGeminiModel } = await import("@/lib/gemini");
+      const model = getGeminiModel();
 
-        if (uploadError) throw new Error(`Upload failed: ${uploadError.message}`);
+      const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
 
-        setStatusText("Parsing document (this may take a minute)...");
-        body = { storagePath, fileName: file.name, fileType: ext };
-      } else if (ext === "pdf" || ext === "docx") {
-        // Small binary file: send as base64
-        setStatusText("Parsing document...");
+Extract all identifiable requirements from the document. For each requirement, extract:
+- title: concise device/requirement name
+- description: detailed description
+- source_type: one of CDC, SEN, BLIND, ELDERLY, BUDS, OTHER
+- priority: P1 (urgent), P2 (standard), P3 (low)
+- tech_level: LOW, MEDIUM, HIGH
+- therapy_domains: array from [OT, PT, Speech, ADL, Sensory, Cognitive]
+- disability_types: array from [Physical, Visual, Hearing, Cognitive, Multiple]
+- gap_flags: array from [RED, BLUE] or empty
+- market_price: number or null
+- stride_target_price: number or null
+
+Be thorough and extract every requirement you can identify.
+Return your response as valid JSON with this structure:
+{
+  "requirements": [...],
+  "summary": "Brief summary of what was extracted"
+}`;
+
+      let parts = [];
+      if (ext === "pdf") {
         const arrayBuffer = await file.arrayBuffer();
-        const bytes = new Uint8Array(arrayBuffer);
-        let binary = "";
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        const base64 = btoa(binary);
-        body = { base64, fileName: file.name, fileType: ext };
+        const base64 = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
+        parts = [
+          { text: `${systemPrompt}\n\nExtract all requirements from this uploaded PDF document.` },
+          { inlineData: { data: base64, mimeType: "application/pdf" } }
+        ];
       } else {
-        setStatusText("Parsing document...");
         const text = await file.text();
-        body = { text };
+        parts = [
+          { text: `${systemPrompt}\n\nExtract requirements from this document text:\n\n${text.slice(0, 30000)}` },
+        ];
       }
 
-      const { data, error } = await supabase.functions.invoke("ai-parse-pdf", { body });
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts }],
+        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+      });
 
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const responseText = result.response.text();
+      if (!responseText) throw new Error("No extraction returned from AI");
 
+      const data = JSON.parse(responseText);
       setExtracted(data);
       toast({ title: "Extraction Complete", description: data.summary });
     } catch (e: any) {
-      toast({ title: "Parsing Failed", description: e.message, variant: "destructive" });
+      console.error("PDF Parsing error:", e);
+      toast({ title: "Parsing Failed", description: e.message || "Failed to parse document", variant: "destructive" });
     } finally {
       setParsing(false);
       setStatusText("");
@@ -91,36 +109,33 @@ const AIPDFUploader = () => {
   const handleImport = async (index: number, req: any) => {
     setImporting((prev) => ({ ...prev, [index]: true }));
     try {
-      const { data, error } = await supabase
-        .from("requirements")
-        .insert({
-          title: req.title,
-          description: req.description,
-          source_type: req.source_type || "OTHER",
-          priority: req.priority || "P2",
-          tech_level: req.tech_level || "LOW",
-          therapy_domains: req.therapy_domains || [],
-          disability_types: req.disability_types || [],
-          gap_flags: req.gap_flags || [],
-          market_price: req.market_price || null,
-          stride_target_price: req.stride_target_price || null,
-          current_state: "S1",
-          created_by: null,
-        })
-        .select()
-        .single();
+      const docRef = await addDoc(collection(db, "requirements"), {
+        title: req.title,
+        description: req.description,
+        source_type: req.source_type || "OTHER",
+        priority: req.priority || "P2",
+        tech_level: req.tech_level || "LOW",
+        therapy_domains: req.therapy_domains || [],
+        disability_types: req.disability_types || [],
+        gap_flags: req.gap_flags || [],
+        market_price: req.market_price || null,
+        stride_target_price: req.stride_target_price || null,
+        current_state: "S1",
+        created_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
 
-      if (error) throw error;
-
-      if (data) {
-        await supabase.from("state_transitions").insert({
-          requirement_id: data.id,
+      if (docRef.id) {
+        await addDoc(collection(db, "state_transitions"), {
+          requirement_id: docRef.id,
           from_state: "NEW",
           to_state: "S1",
           transitioned_by: null,
           notes: "Imported from document via AI extraction",
+          created_at: new Date().toISOString()
         });
-        setImported((prev) => ({ ...prev, [index]: data.id }));
+        setImported((prev) => ({ ...prev, [index]: docRef.id }));
         toast({ title: "Imported", description: `"${req.title}" added to pipeline.` });
       }
     } catch (e: any) {
@@ -150,36 +165,33 @@ const AIPDFUploader = () => {
     for (const { req, i } of remaining) {
       try {
         setImporting((prev) => ({ ...prev, [i]: true }));
-        const { data, error } = await supabase
-          .from("requirements")
-          .insert({
-            title: req.title,
-            description: req.description,
-            source_type: req.source_type || "OTHER",
-            priority: req.priority || "P2",
-            tech_level: req.tech_level || "LOW",
-            therapy_domains: req.therapy_domains || [],
-            disability_types: req.disability_types || [],
-            gap_flags: req.gap_flags || [],
-            market_price: req.market_price || null,
-            stride_target_price: req.stride_target_price || null,
-            current_state: "S1",
-            created_by: null,
-          })
-          .select()
-          .single();
+        const docRef = await addDoc(collection(db, "requirements"), {
+          title: req.title,
+          description: req.description,
+          source_type: req.source_type || "OTHER",
+          priority: req.priority || "P2",
+          tech_level: req.tech_level || "LOW",
+          therapy_domains: req.therapy_domains || [],
+          disability_types: req.disability_types || [],
+          gap_flags: req.gap_flags || [],
+          market_price: req.market_price || null,
+          stride_target_price: req.stride_target_price || null,
+          current_state: "S1",
+          created_by: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
 
-        if (error) throw error;
-
-        if (data) {
-          await supabase.from("state_transitions").insert({
-            requirement_id: data.id,
+        if (docRef.id) {
+          await addDoc(collection(db, "state_transitions"), {
+            requirement_id: docRef.id,
             from_state: "NEW",
             to_state: "S1",
             transitioned_by: null,
             notes: "Imported from document via AI extraction",
+            created_at: new Date().toISOString()
           });
-          setImported((prev) => ({ ...prev, [i]: data.id }));
+          setImported((prev) => ({ ...prev, [i]: docRef.id }));
           successCount++;
         }
       } catch {

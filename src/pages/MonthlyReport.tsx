@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,7 +32,8 @@ const MonthlyReport = () => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const { data } = await supabase.from("requirements").select("*");
+        const reqSnap = await getDocs(collection(db, "requirements"));
+        const data = reqSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setRequirements((data as Requirement[]) || []);
       } catch (error) {
         console.error("Failed to load monthly report data:", error);

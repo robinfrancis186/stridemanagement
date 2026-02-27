@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { auth } from "@/lib/firebase";
+import { confirmPasswordReset } from "firebase/auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,53 +16,31 @@ const ResetPassword = () => {
   const [checkingLink, setCheckingLink] = useState(true);
   const [isRecoveryValid, setIsRecoveryValid] = useState(false);
 
-  const hashParams = useMemo(
-    () => new URLSearchParams(window.location.hash.replace(/^#/, "")),
-    []
-  );
-
   useEffect(() => {
     let unmounted = false;
 
-    const initializeRecoverySession = async () => {
+    const initializeRecoverySession = () => {
       try {
-        const type = hashParams.get("type");
-        const accessToken = hashParams.get("access_token");
-        const refreshToken = hashParams.get("refresh_token");
+        const queryParams = new URLSearchParams(window.location.search);
+        const mode = queryParams.get("mode");
+        const oobCode = queryParams.get("oobCode");
 
-        if (type === "recovery" && accessToken && refreshToken) {
-          const { error } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-
-          if (error) throw error;
-        }
-
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!unmounted) {
-          setIsRecoveryValid(Boolean(session?.user));
+        if (mode === "resetPassword" && oobCode) {
+          if (!unmounted) setIsRecoveryValid(true);
+        } else {
+          if (!unmounted) setIsRecoveryValid(false);
         }
       } catch {
-        if (!unmounted) {
-          setIsRecoveryValid(false);
-        }
+        if (!unmounted) setIsRecoveryValid(false);
       } finally {
-        if (!unmounted) {
-          setCheckingLink(false);
-        }
+        if (!unmounted) setCheckingLink(false);
       }
     };
 
-    void initializeRecoverySession();
+    initializeRecoverySession();
 
-    return () => {
-      unmounted = true;
-    };
-  }, [hashParams]);
+    return () => { unmounted = true; };
+  }, []);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -78,15 +57,17 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
+      const queryParams = new URLSearchParams(window.location.search);
+      const oobCode = queryParams.get("oobCode");
+      if (!oobCode) throw new Error("Missing reset code");
+
+      await confirmPasswordReset(auth, oobCode, password);
 
       toast({
         title: "Password updated",
         description: "You can now sign in with your new password.",
       });
 
-      await supabase.auth.signOut().catch(() => {});
       navigate("/auth", { replace: true });
     } catch (error: any) {
       toast({

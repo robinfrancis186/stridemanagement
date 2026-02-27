@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db, storage } from "@/lib/firebase";
+import { collection, query, where, orderBy, getDocs, addDoc, deleteDoc, doc } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, deleteObject, getDownloadURL } from "firebase/storage";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,12 +26,12 @@ const FileUploadZone = ({ requirementId, isAdmin }: { requirementId: string; isA
   const inputRef = useRef<HTMLInputElement>(null);
 
   const fetchFiles = async () => {
-    const { data } = await supabase
-      .from("requirement_files")
-      .select("*")
-      .eq("requirement_id", requirementId)
-      .order("created_at", { ascending: false });
-    setFiles((data as FileRecord[]) || []);
+    const snap = await getDocs(query(
+      collection(db, "requirement_files"),
+      where("requirement_id", "==", requirementId),
+      orderBy("created_at", "desc")
+    ));
+    setFiles(snap.docs.map(d => ({ id: d.id, ...d.data() })) as FileRecord[]);
   };
 
   useEffect(() => { fetchFiles(); }, [requirementId]);
@@ -40,23 +42,23 @@ const FileUploadZone = ({ requirementId, isAdmin }: { requirementId: string; isA
 
     for (const file of Array.from(fileList)) {
       const filePath = `${requirementId}/${Date.now()}-${file.name}`;
-      const { error: uploadErr } = await supabase.storage
-        .from("requirement-files")
-        .upload(filePath, file);
+      try {
+        const fileRef = storageRef(storage, `requirement-files/${filePath}`);
+        await uploadBytes(fileRef, file);
 
-      if (uploadErr) {
+        await addDoc(collection(db, "requirement_files"), {
+          requirement_id: requirementId,
+          file_name: file.name,
+          file_path: filePath,
+          file_size: file.size,
+          file_type: file.type,
+          uploaded_by: user?.uid,
+          created_at: new Date().toISOString()
+        });
+      } catch (uploadErr: any) {
         toast({ title: "Upload Error", description: uploadErr.message, variant: "destructive" });
         continue;
       }
-
-      await supabase.from("requirement_files").insert({
-        requirement_id: requirementId,
-        file_name: file.name,
-        file_path: filePath,
-        file_size: file.size,
-        file_type: file.type,
-        uploaded_by: user?.id,
-      });
     }
 
     toast({ title: "Files Uploaded" });
@@ -65,15 +67,25 @@ const FileUploadZone = ({ requirementId, isAdmin }: { requirementId: string; isA
   };
 
   const handleDelete = async (file: FileRecord) => {
-    await supabase.storage.from("requirement-files").remove([file.file_path]);
-    await supabase.from("requirement_files").delete().eq("id", file.id);
+    try {
+      const fileRef = storageRef(storage, `requirement-files/${file.file_path}`);
+      await deleteObject(fileRef);
+      await deleteDoc(doc(db, "requirement_files", file.id));
+    } catch (e: any) {
+      toast({ title: "Error deleting file", description: e.message, variant: "destructive" });
+    }
     toast({ title: "File Deleted" });
     fetchFiles();
   };
 
   const handleDownload = async (file: FileRecord) => {
-    const { data } = await supabase.storage.from("requirement-files").createSignedUrl(file.file_path, 60);
-    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+    try {
+      const fileRef = storageRef(storage, `requirement-files/${file.file_path}`);
+      const url = await getDownloadURL(fileRef);
+      if (url) window.open(url, "_blank");
+    } catch (e: any) {
+      toast({ title: "Error downloading file", description: e.message, variant: "destructive" });
+    }
   };
 
   const formatSize = (bytes: number | null) => {

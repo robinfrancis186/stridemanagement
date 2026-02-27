@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { STATES, type StateKey } from "@/lib/constants";
 import { format } from "date-fns";
 import { ArrowLeft, FileText, Package, Clock, FlaskConical, Gavel, History } from "lucide-react";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/utils";
 
 interface Requirement {
   id: string;
@@ -46,18 +47,18 @@ const DeviceDocumentation = () => {
 
       try {
         const [rq, tr, fb, doe, dec] = await Promise.all([
-          supabase.from("requirements").select("*").eq("id", id).single(),
-          supabase.from("state_transitions").select("*").eq("requirement_id", id).order("created_at"),
-          supabase.from("phase_feedbacks").select("*").eq("requirement_id", id).order("created_at"),
-          supabase.from("doe_records").select("*").eq("requirement_id", id).limit(1).maybeSingle(),
-          supabase.from("committee_decisions").select("*").eq("requirement_id", id).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+          getDoc(doc(db, "requirements", id)),
+          getDocs(query(collection(db, "state_transitions"), where("requirement_id", "==", id), orderBy("created_at", "asc"))),
+          getDocs(query(collection(db, "phase_feedbacks"), where("requirement_id", "==", id), orderBy("created_at", "asc"))),
+          getDocs(query(collection(db, "doe_records"), where("requirement_id", "==", id), limit(1))),
+          getDocs(query(collection(db, "committee_decisions"), where("requirement_id", "==", id), orderBy("created_at", "desc"), limit(1))),
         ]);
 
-        setReq(rq.data as Requirement | null);
-        setTransitions(tr.data || []);
-        setFeedbacks(fb.data || []);
-        setDoeRecord(doe.data);
-        setDecision(dec.data);
+        setReq(rq.exists() ? { id: rq.id, ...rq.data() } as Requirement : null);
+        setTransitions(tr.docs.map(d => ({ id: d.id, ...d.data() })));
+        setFeedbacks(fb.docs.map(d => ({ id: d.id, ...d.data() })));
+        setDoeRecord(doe.empty ? null : { id: doe.docs[0].id, ...doe.docs[0].data() });
+        setDecision(dec.empty ? null : { id: dec.docs[0].id, ...dec.docs[0].data() });
       } catch (error) {
         console.error("Failed to load device documentation data:", error);
         setReq(null);

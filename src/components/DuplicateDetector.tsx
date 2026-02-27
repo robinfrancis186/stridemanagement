@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { aiDuplicateCheck } from "@/lib/ai-actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,11 +37,7 @@ const DuplicateDetector = ({ title, description }: DuplicateDetectorProps) => {
     setChecking(true);
     setDuplicates(null);
     try {
-      const { data, error } = await supabase.functions.invoke("ai-duplicate-check", {
-        body: { title, description },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
+      const data = await aiDuplicateCheck(title, description);
       setDuplicates(data.duplicates || []);
       if ((data.duplicates || []).length === 0) {
         toast({ title: "No Duplicates Found", description: "This requirement appears to be unique." });

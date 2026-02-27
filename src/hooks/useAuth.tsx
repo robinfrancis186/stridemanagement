@@ -1,40 +1,67 @@
-import { createContext, useContext, ReactNode } from "react";
-import type { User } from "@supabase/supabase-js";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import type { User } from "firebase/auth";
+import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
+import { auth, db } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 interface AuthContextType {
   user: User | null;
-  session: null;
   loading: boolean;
   role: string | null;
   signOut: () => Promise<void>;
 }
 
-const DEMO_USER = {
-  id: "00000000-0000-0000-0000-000000000000",
-  email: "demo@stride-coe.com",
-  app_metadata: {},
-  user_metadata: { full_name: "Demo User" },
-  aud: "authenticated",
-  created_at: new Date().toISOString(),
-} as unknown as User;
-
 const AuthContext = createContext<AuthContextType>({
-  user: DEMO_USER,
-  session: null,
-  loading: false,
-  role: "coe_admin",
-  signOut: async () => {},
+  user: null,
+  loading: true,
+  role: null,
+  signOut: async () => { },
 });
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<string | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+
+      if (firebaseUser) {
+        try {
+          // Fetch user role from Firestore
+          const roleSnap = await getDoc(doc(db, "user_roles", firebaseUser.uid));
+          if (roleSnap.exists()) {
+            setRole(roleSnap.data()?.role || null);
+          } else {
+            setRole(null);
+          }
+        } catch {
+          setRole(null);
+        }
+      } else {
+        setRole(null);
+      }
+
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await firebaseSignOut(auth);
+    setUser(null);
+    setRole(null);
+  };
+
   return (
     <AuthContext.Provider
       value={{
-        user: DEMO_USER,
-        session: null,
-        loading: false,
-        role: "coe_admin",
-        signOut: async () => {},
+        user,
+        loading,
+        role,
+        signOut: handleSignOut,
       }}
     >
       {children}

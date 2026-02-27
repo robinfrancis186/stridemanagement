@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, addDoc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,36 +45,36 @@ const NewRequirement = () => {
     }
     setLoading(true);
 
-    const { data, error } = await supabase.from("requirements").insert({
-      title,
-      description: description || null,
-      source_type: sourceType,
-      priority,
-      tech_level: techLevel,
-      market_price: marketPrice ? parseFloat(marketPrice) : null,
-      stride_target_price: strideTargetPrice ? parseFloat(strideTargetPrice) : null,
-      disability_types: selectedDisabilities,
-      therapy_domains: selectedTherapies,
-      gap_flags: gapFlags,
-      current_state: "S1",
-      created_by: null,
-    }).select().single();
+    try {
+      const docRef = await addDoc(collection(db, "requirements"), {
+        title,
+        description: description || null,
+        source_type: sourceType,
+        priority,
+        tech_level: techLevel,
+        market_price: marketPrice ? parseFloat(marketPrice) : null,
+        stride_target_price: strideTargetPrice ? parseFloat(strideTargetPrice) : null,
+        disability_types: selectedDisabilities,
+        therapy_domains: selectedTherapies,
+        gap_flags: gapFlags,
+        current_state: "S1",
+        created_by: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      });
 
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-      setLoading(false);
-      return;
-    }
-
-    // Create initial state transition
-    if (data) {
-      await supabase.from("state_transitions").insert({
-        requirement_id: data.id,
+      await addDoc(collection(db, "state_transitions"), {
+        requirement_id: docRef.id,
         from_state: "NEW",
         to_state: "S1",
         transitioned_by: null,
         notes: "Requirement captured",
+        created_at: new Date().toISOString()
       });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+      setLoading(false);
+      return;
     }
 
     toast({ title: "Success", description: "Requirement created and set to S1 (Captured)." });

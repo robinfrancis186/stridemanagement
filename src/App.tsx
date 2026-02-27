@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import AppLayout from "@/components/AppLayout";
+import ProtectedRoute from "@/components/ProtectedRoute";
 
+const Auth = lazy(() => import("@/pages/Auth"));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword"));
 const Dashboard = lazy(() => import("@/pages/Dashboard"));
 const Requirements = lazy(() => import("@/pages/Requirements"));
 const RequirementDetail = lazy(() => import("@/pages/RequirementDetail"));
@@ -35,15 +38,19 @@ const App = () => (
         <AuthProvider>
           <Suspense fallback={<PageLoader />}>
             <Routes>
-              <Route path="/" element={<AppLayout><Dashboard /></AppLayout>} />
-              <Route path="/requirements" element={<AppLayout><Requirements /></AppLayout>} />
-              <Route path="/requirements/new" element={<AppLayout><NewRequirement /></AppLayout>} />
-              <Route path="/requirements/:id" element={<AppLayout><RequirementDetail /></AppLayout>} />
-              <Route path="/requirements/:id/documentation" element={<AppLayout><DeviceDocumentation /></AppLayout>} />
-              <Route path="/catalogue" element={<AppLayout><ProductionCatalogue /></AppLayout>} />
-              <Route path="/designathon" element={<AppLayout><DesignathonManagement /></AppLayout>} />
-              <Route path="/analytics" element={<AppLayout><LeadershipDashboard /></AppLayout>} />
-              <Route path="/reports" element={<AppLayout><MonthlyReport /></AppLayout>} />
+              {/* Public routes */}
+              <Route path="/auth" element={<Auth />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              {/* Protected routes */}
+              <Route path="/" element={<ProtectedRoute><AppLayout><Dashboard /></AppLayout></ProtectedRoute>} />
+              <Route path="/requirements" element={<ProtectedRoute><AppLayout><Requirements /></AppLayout></ProtectedRoute>} />
+              <Route path="/requirements/new" element={<ProtectedRoute><AppLayout><NewRequirement /></AppLayout></ProtectedRoute>} />
+              <Route path="/requirements/:id" element={<ProtectedRoute><AppLayout><RequirementDetail /></AppLayout></ProtectedRoute>} />
+              <Route path="/requirements/:id/documentation" element={<ProtectedRoute><AppLayout><DeviceDocumentation /></AppLayout></ProtectedRoute>} />
+              <Route path="/catalogue" element={<ProtectedRoute><AppLayout><ProductionCatalogue /></AppLayout></ProtectedRoute>} />
+              <Route path="/designathon" element={<ProtectedRoute><AppLayout><DesignathonManagement /></AppLayout></ProtectedRoute>} />
+              <Route path="/analytics" element={<ProtectedRoute><AppLayout><LeadershipDashboard /></AppLayout></ProtectedRoute>} />
+              <Route path="/reports" element={<ProtectedRoute><AppLayout><MonthlyReport /></AppLayout></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

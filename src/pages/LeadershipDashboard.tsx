@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { STATES, type StateKey, SOURCE_TYPES, PRIORITIES, TECH_LEVELS, THERAPY_DOMAINS } from "@/lib/constants";
@@ -49,13 +50,13 @@ const LeadershipDashboard = () => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const [reqRes, transRes] = await Promise.all([
-          supabase.from("requirements").select("*"),
-          supabase.from("state_transitions").select("*").order("created_at", { ascending: true }),
+        const [reqSnap, transSnap] = await Promise.all([
+          getDocs(collection(db, "requirements")),
+          getDocs(query(collection(db, "state_transitions"), orderBy("created_at", "asc"))),
         ]);
 
-        setRequirements((reqRes.data as Requirement[]) || []);
-        setTransitions((transRes.data as Transition[]) || []);
+        setRequirements(reqSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Requirement[]);
+        setTransitions(transSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Transition[]);
       } catch (error) {
         console.error("Failed to load leadership analytics:", error);
         setRequirements([]);

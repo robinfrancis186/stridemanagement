@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, getDocs, orderBy, query } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -33,7 +34,8 @@ const Requirements = () => {
   useEffect(() => {
     const fetchRequirements = async () => {
       try {
-        const { data } = await supabase.from("requirements").select("*").order("created_at", { ascending: false });
+        const snap = await getDocs(query(collection(db, "requirements"), orderBy("created_at", "desc")));
+        const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setRequirements((data as Requirement[]) || []);
       } catch (error) {
         console.error("Failed to load requirements:", error);
@@ -59,8 +61,8 @@ const Requirements = () => {
 
   const priorityColor = (p: string) =>
     p === "P1" ? "bg-destructive text-destructive-foreground" :
-    p === "P2" ? "bg-warning text-warning-foreground" :
-    "bg-muted text-muted-foreground";
+      p === "P2" ? "bg-warning text-warning-foreground" :
+        "bg-muted text-muted-foreground";
 
   return (
     <div className="space-y-6 animate-fade-in">

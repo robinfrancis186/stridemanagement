@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/lib/firebase";
+import { collection, query, where, orderBy, limit, getDocs, updateDoc, doc, addDoc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/hooks/use-toast";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { FlaskConical, Save, TrendingUp } from "lucide-react";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/lib/utils";
 
 interface DoERecord {
   id: string;
@@ -48,16 +49,17 @@ const DoETab = ({ requirementId, currentState, isAdmin }: DoETabProps) => {
   useEffect(() => {
     const fetch = async () => {
       try {
-        const { data } = await supabase
-          .from("doe_records")
-          .select("*")
-          .eq("requirement_id", requirementId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const q = query(
+          collection(db, "doe_records"),
+          where("requirement_id", "==", requirementId),
+          orderBy("created_at", "desc"),
+          limit(1)
+        );
+        const snap = await getDocs(q);
 
-        if (data) {
-          const rec = data as unknown as DoERecord;
+        if (!snap.empty) {
+          const recDoc = snap.docs[0];
+          const rec = { id: recDoc.id, ...recDoc.data() } as unknown as DoERecord;
           setRecord(rec);
           setProtocol(rec.testing_protocol || "");
           setSampleSize(rec.sample_size?.toString() || "");
@@ -97,20 +99,18 @@ const DoETab = ({ requirementId, currentState, isAdmin }: DoETabProps) => {
       results_summary: resultsSummary,
       improvement_metrics: improvements as unknown as Json,
       beneficiary_feedback: feedback,
-      created_by: user?.id,
+      created_by: user?.uid,
     };
 
-    let error;
-    if (record) {
-      ({ error } = await supabase.from("doe_records").update(payload).eq("id", record.id));
-    } else {
-      ({ error } = await supabase.from("doe_records").insert(payload));
-    }
-
-    if (error) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    } else {
+    try {
+      if (record) {
+        await updateDoc(doc(db, "doe_records", record.id), { ...payload, updated_at: new Date().toISOString() });
+      } else {
+        await addDoc(collection(db, "doe_records"), { ...payload, created_at: new Date().toISOString() });
+      }
       toast({ title: "Saved", description: "DoE data saved successfully." });
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     }
     setSaving(false);
   };
