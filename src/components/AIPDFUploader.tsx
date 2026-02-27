@@ -110,18 +110,18 @@ Return your response as valid JSON with this structure:
     setImporting((prev) => ({ ...prev, [index]: true }));
     try {
       const docRef = await addDoc(collection(db, "requirements"), {
-        title: req.title,
-        description: req.description,
+        title: req.title || "Untitled Requirement",
+        description: req.description || "No description provided.",
         source_type: req.source_type || "OTHER",
         priority: req.priority || "P2",
         tech_level: req.tech_level || "LOW",
         therapy_domains: req.therapy_domains || [],
         disability_types: req.disability_types || [],
         gap_flags: req.gap_flags || [],
-        market_price: req.market_price || null,
-        stride_target_price: req.stride_target_price || null,
+        market_price: req.market_price ?? null,
+        stride_target_price: req.stride_target_price ?? null,
         current_state: "S1",
-        created_by: null,
+        created_by: user?.uid || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       });
@@ -131,14 +131,15 @@ Return your response as valid JSON with this structure:
           requirement_id: docRef.id,
           from_state: "NEW",
           to_state: "S1",
-          transitioned_by: null,
+          transitioned_by: user?.uid || null,
           notes: "Imported from document via AI extraction",
           created_at: new Date().toISOString()
         });
         setImported((prev) => ({ ...prev, [index]: docRef.id }));
-        toast({ title: "Imported", description: `"${req.title}" added to pipeline.` });
+        toast({ title: "Imported", description: `"${req.title || 'Requirement'}" added to pipeline.` });
       }
     } catch (e: any) {
+      console.error("Single import failed:", e);
       toast({ title: "Import Failed", description: e.message, variant: "destructive" });
     } finally {
       setImporting((prev) => ({ ...prev, [index]: false }));
@@ -159,25 +160,23 @@ Return your response as valid JSON with this structure:
     }
 
     setImportingAll(true);
-    let successCount = 0;
-    let failCount = 0;
 
-    for (const { req, i } of remaining) {
+    const importPromises = remaining.map(async ({ req, i }) => {
+      setImporting((prev) => ({ ...prev, [i]: true }));
       try {
-        setImporting((prev) => ({ ...prev, [i]: true }));
         const docRef = await addDoc(collection(db, "requirements"), {
-          title: req.title,
-          description: req.description,
+          title: req.title || "Untitled Requirement",
+          description: req.description || "No description provided.",
           source_type: req.source_type || "OTHER",
           priority: req.priority || "P2",
           tech_level: req.tech_level || "LOW",
           therapy_domains: req.therapy_domains || [],
           disability_types: req.disability_types || [],
           gap_flags: req.gap_flags || [],
-          market_price: req.market_price || null,
-          stride_target_price: req.stride_target_price || null,
+          market_price: req.market_price ?? null,
+          stride_target_price: req.stride_target_price ?? null,
           current_state: "S1",
-          created_by: null,
+          created_by: user?.uid || null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         });
@@ -187,19 +186,24 @@ Return your response as valid JSON with this structure:
             requirement_id: docRef.id,
             from_state: "NEW",
             to_state: "S1",
-            transitioned_by: null,
+            transitioned_by: user?.uid || null,
             notes: "Imported from document via AI extraction",
             created_at: new Date().toISOString()
           });
           setImported((prev) => ({ ...prev, [i]: docRef.id }));
-          successCount++;
+          return { status: 'fulfilled', i };
         }
-      } catch {
-        failCount++;
+      } catch (error) {
+        console.error("Single import failed:", error);
+        throw error;
       } finally {
         setImporting((prev) => ({ ...prev, [i]: false }));
       }
-    }
+    });
+
+    const results = await Promise.allSettled(importPromises);
+    const successCount = results.filter(r => r.status === "fulfilled").length;
+    const failCount = results.length - successCount;
 
     setImportingAll(false);
     toast({
