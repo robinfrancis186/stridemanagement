@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, getDocs, addDoc, updateDoc, doc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, addDoc, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { STATES, type StateKey } from "@/lib/constants";
 import { toast } from "@/hooks/use-toast";
 import { format } from "date-fns";
-import { Calendar, Plus, Trophy, ArrowRight, Upload, Loader2, CheckCircle2 } from "lucide-react";
+import { Calendar, Plus, Trophy, ArrowRight, Upload, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 
 interface DesignathonEvent {
   id: string;
@@ -181,7 +181,40 @@ const DesignathonManagement = () => {
       const model = getGeminiModel();
 
       const event = events.find(e => e.id === activeEventId);
-      if (!event || !event.requirement_id) throw new Error("Event or requirement not found");
+      if (!event) throw new Error("Event not found");
+
+      let reqId = event.requirement_id;
+
+      // Auto-upgrade legacy events that don't have a requirement attached
+      if (!reqId) {
+        setStatusText("Upgrading legacy event...");
+        const reqRef = await addDoc(collection(db, "requirements"), {
+          title: `Designathon: ${event.title}`,
+          description: event.description || "Auto-generated requirement for legacy Designathon.",
+          source_type: "OTHER",
+          priority: "P2",
+          tech_level: "MEDIUM",
+          current_state: "H-DES-1",
+          created_by: user?.uid || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+
+        reqId = reqRef.id;
+
+        await addDoc(collection(db, "state_transitions"), {
+          requirement_id: reqId,
+          from_state: "NEW",
+          to_state: "H-DES-1",
+          notes: "Legacy Designathon Event Upgraded",
+          transitioned_by: user?.uid || null,
+          created_at: new Date().toISOString()
+        });
+
+        await updateDoc(doc(db, "designathon_events", event.id), {
+          requirement_id: reqId
+        });
+      }
 
       if (uploadAction === "REGISTRATION") {
         const prompt = `You are an AI assistant helping to parse Designathon Team Registration data from a raw, noisy CSV file.
@@ -211,7 +244,7 @@ ${csvData.slice(0, 15000)}`;
         const promises = extractedTeams.map((t: any) =>
           addDoc(collection(db, "designathon_teams"), {
             event_id: activeEventId,
-            requirement_id: event.requirement_id,
+            requirement_id: reqId,
             team_name: String(t.team_name || "Unknown Team"),
             members: Array.isArray(t.members) ? t.members.map(String) : [],
             score: null,
@@ -223,7 +256,7 @@ ${csvData.slice(0, 15000)}`;
         await Promise.all(promises);
 
         // Auto-advance
-        await advanceReqState(event.requirement_id, "H-DES-2");
+        if (reqId) await advanceReqState(reqId, "H-DES-2");
         toast({ title: `Successfully registered ${extractedTeams.length} teams.` });
 
       } else if (uploadAction === "JUDGING") {
@@ -261,7 +294,7 @@ ${csvData.slice(0, 15000)}`;
         await Promise.all(promises);
 
         // Auto-advance
-        await advanceReqState(event.requirement_id, "H-DES-4");
+        if (reqId) await advanceReqState(reqId, "H-DES-4");
         toast({ title: `Updated scores for ${updatedCount} teams.` });
       }
 
@@ -342,6 +375,32 @@ ${csvData.slice(0, 15000)}`;
       toast({ title: "Error", description: e.message, variant: "destructive" });
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleDeleteEvent = async (eventId: string, reqId: string | null) => {
+    if (!confirm("Are you sure you want to delete this designathon event? This action will safely delete the event and all of its associated teams.")) return;
+
+    setActionLoading(true);
+    setStatusText("Deleting Event...");
+    try {
+      const eventTeams = teams.filter(t => t.event_id === eventId);
+      const deletePromises = eventTeams.map(t => deleteDoc(doc(db, "designathon_teams", t.id)));
+      await Promise.all(deletePromises);
+
+      await deleteDoc(doc(db, "designathon_events", eventId));
+
+      if (reqId) {
+        await deleteDoc(doc(db, "requirements", reqId));
+      }
+
+      toast({ title: "Event Deleted Successfully" });
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Error deleting event", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+      setStatusText("");
     }
   };
 
@@ -426,6 +485,11 @@ ${csvData.slice(0, 15000)}`;
                     <CardTitle className="font-display text-lg flex items-center gap-2">
                       <Trophy className="h-5 w-5 text-accent" />
                       {ev.title}
+                      {isAdmin && (
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive ml-2 opacity-50 hover:opacity-100 hover:bg-destructive/10" onClick={() => handleDeleteEvent(ev.id, ev.requirement_id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </CardTitle>
                     {ev.description && <p className="text-sm text-muted-foreground mt-1">{ev.description}</p>}
                     <div className="flex items-center gap-2 mt-2">
