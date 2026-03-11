@@ -48,17 +48,20 @@ const MonthlyReport = () => {
 
   const months = useMemo(() => {
     const set = new Set<string>();
-    requirements.forEach(r => { set.add(r.created_at.slice(0, 7)); set.add(r.updated_at.slice(0, 7)); });
+    requirements.forEach(r => {
+      if (r.created_at) set.add(r.created_at.slice(0, 7));
+      if (r.updated_at) set.add(r.updated_at.slice(0, 7));
+    });
     return [...set].sort().reverse();
   }, [requirements]);
 
   const monthReqs = requirements.filter(r =>
-    r.created_at.slice(0, 7) <= selectedMonth
+    r.created_at && r.created_at.slice(0, 7) <= selectedMonth
   );
 
-  const newThisMonth = requirements.filter(r => r.created_at.slice(0, 7) === selectedMonth);
+  const newThisMonth = requirements.filter(r => r.created_at?.slice(0, 7) === selectedMonth);
   const productionReady = monthReqs.filter(r => r.current_state === "H-DOE-5");
-  const prodThisMonth = productionReady.filter(r => r.updated_at.slice(0, 7) === selectedMonth);
+  const prodThisMonth = productionReady.filter(r => r.updated_at?.slice(0, 7) === selectedMonth);
 
   const sourceCounts: Record<string, number> = {};
   SOURCE_TYPES.forEach(s => sourceCounts[s] = 0);
@@ -154,6 +157,7 @@ const MonthlyReport = () => {
         <CardContent>
           {(() => {
             const alerts = monthReqs.filter(r => {
+              if (!r.updated_at || !r.current_state) return false;
               const days = (Date.now() - new Date(r.updated_at).getTime()) / 86400000;
               const state = r.current_state;
               if (state.startsWith("S") && days > 14) return true;

@@ -41,7 +41,13 @@ const Auth = () => {
 
     try {
       if (mode === "forgot") {
-        await withAuthRecovery(() => sendPasswordResetEmail(auth, email));
+        // Explicitly set ActionCodeSettings without iOS/Android properties 
+        // to prevent Firebase from trying to use deprecated Dynamic Links.
+        const actionCodeSettings = {
+          url: window.location.origin + '/login',
+          handleCodeInApp: false,
+        };
+        await withAuthRecovery(() => sendPasswordResetEmail(auth, email, actionCodeSettings));
 
         toast({
           title: "Check your email",

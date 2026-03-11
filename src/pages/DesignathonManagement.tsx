@@ -104,6 +104,9 @@ const DesignathonManagement = () => {
         team_name: teamName,
         members: teamMembers.split(",").map(m => m.trim()).filter(Boolean),
         score: null,
+        requirement_id: null,
+        submission_url: null,
+        is_winner: false,
         created_at: new Date().toISOString()
       });
       toast({ title: "Team Added" });
@@ -113,6 +116,155 @@ const DesignathonManagement = () => {
       fetchData();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  };
+
+  // --- New Team Action Modals ---
+  const [assignReqModalOpen, setAssignReqModalOpen] = useState(false);
+  const [submitModalOpen, setSubmitModalOpen] = useState(false);
+  const [scoreModalOpen, setScoreModalOpen] = useState(false);
+
+  const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
+  const [selectedReqId, setSelectedReqId] = useState("");
+  const [submissionUrl, setSubmissionUrl] = useState("");
+  const [teamScore, setTeamScore] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const getTeamAndReq = (teamId: string) => {
+    const t = teams.find(x => x.id === teamId);
+    const r = t?.requirement_id ? requirements.find(x => x.id === t.requirement_id) : null;
+    return { t, r };
+  };
+
+  const advanceReqState = async (reqId: string, newState: string) => {
+    import("firebase/firestore").then(async ({ doc, updateDoc, collection, addDoc }) => {
+      const oldState = requirements.find(r => r.id === reqId)?.current_state;
+      await updateDoc(doc(db, "requirements", reqId), { current_state: newState });
+
+      // Add empty transition and feedback to keep timeline clean
+      if (oldState) {
+        await Promise.all([
+          addDoc(collection(db, "state_transitions"), {
+            requirement_id: reqId,
+            from_state: oldState,
+            to_state: newState,
+            notes: `Auto-advanced via Designathon interface`,
+            created_at: new Date().toISOString()
+          }),
+          addDoc(collection(db, "phase_feedbacks"), {
+            requirement_id: reqId,
+            from_state: oldState,
+            to_state: newState,
+            phase_notes: "Auto-generated from Team Action",
+            created_at: new Date().toISOString()
+          })
+        ]);
+      }
+    });
+  };
+
+  const handleAssignReq = async () => {
+    if (!activeTeamId || !selectedReqId) return;
+    setActionLoading(true);
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "designathon_teams", activeTeamId), { requirement_id: selectedReqId });
+
+      // Auto advance the req to H-DES-2 (Teams Registered) if it is in H-DES-1
+      const req = requirements.find(r => r.id === selectedReqId);
+      if (req?.current_state === "H-DES-1") {
+        await advanceReqState(selectedReqId, "H-DES-2");
+      }
+
+      toast({ title: "Requirement Assigned" });
+      setAssignReqModalOpen(false);
+      setSelectedReqId("");
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSubmitUrl = async () => {
+    if (!activeTeamId || !submissionUrl) return;
+    setActionLoading(true);
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "designathon_teams", activeTeamId), { submission_url: submissionUrl });
+
+      // Auto advance the req to H-DES-3 (Submissions In)
+      const { r } = getTeamAndReq(activeTeamId);
+      if (r?.current_state === "H-DES-2") {
+        await advanceReqState(r.id, "H-DES-3");
+      }
+
+      toast({ title: "Submission Recorded" });
+      setSubmitModalOpen(false);
+      setSubmissionUrl("");
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleScoreTeam = async () => {
+    if (!activeTeamId || !teamScore) return;
+    setActionLoading(true);
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "designathon_teams", activeTeamId), { score: Number(teamScore) });
+
+      // Auto advance IF all teams for this requirement have scores
+      // (Simplified: Just advance it to H-DES-4 for now upon scoring)
+      const { r } = getTeamAndReq(activeTeamId);
+      if (r?.current_state === "H-DES-3") {
+        await advanceReqState(r.id, "H-DES-4");
+      }
+
+      toast({ title: "Score Saved" });
+      setScoreModalOpen(false);
+      setTeamScore("");
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleSelectWinner = async (teamId: string) => {
+    if (!confirm("Select this team as the winner?")) return;
+    try {
+      const { updateDoc, doc } = await import("firebase/firestore");
+      await updateDoc(doc(db, "designathon_teams", teamId), { is_winner: true });
+
+      const { r } = getTeamAndReq(teamId);
+      if (r?.current_state === "H-DES-4" || r?.current_state === "H-DES-3") {
+        await advanceReqState(r.id, "H-DES-5");
+      }
+
+      toast({ title: "Winner Selected" });
+      fetchData();
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleHandover = async (teamId: string) => {
+    if (!confirm("Confirm prototype handover is complete?")) return;
+    try {
+      const { r } = getTeamAndReq(teamId);
+      if (r) {
+        await advanceReqState(r.id, "H-DES-6");
+        toast({ title: "Handover Complete" });
+        fetchData();
+      }
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
     }
   };
 
@@ -195,18 +347,66 @@ const DesignathonManagement = () => {
                 {evTeams.length > 0 && (
                   <div className="space-y-2 mt-2">
                     <p className="text-xs font-medium text-muted-foreground">Teams ({evTeams.length})</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      {evTeams.map(t => (
-                        <div key={t.id} className="rounded border p-2.5 text-sm">
-                          <p className="font-medium">{t.team_name}</p>
-                          {t.members.length > 0 && (
-                            <p className="text-xs text-muted-foreground">{t.members.join(", ")}</p>
-                          )}
-                          {t.score !== null && (
-                            <Badge variant="outline" className="mt-1 text-[10px]">Score: {t.score}</Badge>
-                          )}
-                        </div>
-                      ))}
+                    <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                      {evTeams.map(t => {
+                        const reqForTeam = t.requirement_id ? requirements.find(r => r.id === t.requirement_id) : null;
+                        return (
+                          <div key={t.id} className={`rounded border p-3 text-sm flex flex-col justify-between ${t.is_winner ? 'border-accent bg-accent/5' : ''}`}>
+                            <div>
+                              <div className="flex justify-between items-start mb-1">
+                                <p className="font-semibold">{t.team_name} {t.is_winner && <Trophy className="inline h-3 w-3 text-accent ml-1" />}</p>
+                                {t.score !== null && (
+                                  <Badge variant="secondary" className="text-[10px]">Score: {t.score}</Badge>
+                                )}
+                              </div>
+                              {t.members && t.members.length > 0 && (
+                                <p className="text-xs text-muted-foreground line-clamp-1">{t.members.join(", ")}</p>
+                              )}
+
+                              <div className="mt-2 space-y-1">
+                                {reqForTeam ? (
+                                  <div className="text-[11px] bg-muted/50 p-1.5 rounded">
+                                    <span className="font-medium">Req: </span>
+                                    <span className="text-muted-foreground">{reqForTeam.title}</span>
+                                    <Badge variant="outline" className="ml-2 text-[9px] h-4 leading-none">{reqForTeam.current_state}</Badge>
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] text-muted-foreground italic">No requirement assigned</p>
+                                )}
+
+                                {t.submission_url && (
+                                  <div className="text-[11px] pt-1">
+                                    <a href={t.submission_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                                      View Submission
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            {isAdmin && (
+                              <div className="flex flex-wrap gap-1.5 mt-3 pt-2 border-t">
+                                {!t.requirement_id && (
+                                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => { setActiveTeamId(t.id); setAssignReqModalOpen(true); }}>Assign Req</Button>
+                                )}
+                                {t.requirement_id && !t.submission_url && (
+                                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => { setActiveTeamId(t.id); setSubmitModalOpen(true); }}>Add Submission</Button>
+                                )}
+                                {t.submission_url && t.score === null && (
+                                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={() => { setActiveTeamId(t.id); setScoreModalOpen(true); }}>Score</Button>
+                                )}
+                                {t.score !== null && !t.is_winner && (
+                                  <Button size="sm" variant="default" className="h-6 text-[10px] px-2" onClick={() => handleSelectWinner(t.id)}>Select Winner</Button>
+                                )}
+                                {t.is_winner && reqForTeam?.current_state === "H-DES-5" && (
+                                  <Button size="sm" variant="default" className="h-6 text-[10px] px-2" onClick={() => handleHandover(t.id)}>Complete Handover</Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -245,6 +445,64 @@ const DesignathonManagement = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Assign Requirement Modal */}
+      <Dialog open={assignReqModalOpen} onOpenChange={setAssignReqModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Assign Requirement</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>Select Requirement</Label>
+            <select
+              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={selectedReqId}
+              onChange={(e) => setSelectedReqId(e.target.value)}
+            >
+              <option value="" disabled>Select a requirement...</option>
+              {requirements.filter(r => r.current_state === 'H-DES-1').map(r => (
+                <option key={r.id} value={r.id}>{r.title} ({r.current_state})</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">Only requirements in <strong>H-DES-1 (Challenge Published)</strong> are shown.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignReqModalOpen(false)} disabled={actionLoading}>Cancel</Button>
+            <Button onClick={handleAssignReq} disabled={!selectedReqId || actionLoading}>{actionLoading ? "Assigning..." : "Assign"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Submit Modal */}
+      <Dialog open={submitModalOpen} onOpenChange={setSubmitModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Add Submission</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>Submission URL</Label>
+            <Input value={submissionUrl} onChange={e => setSubmissionUrl(e.target.value)} placeholder="https://..." />
+            <p className="text-xs text-muted-foreground">This will advance the requirement to <strong>H-DES-3 (Submissions In)</strong>.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSubmitModalOpen(false)} disabled={actionLoading}>Cancel</Button>
+            <Button onClick={handleSubmitUrl} disabled={!submissionUrl.trim() || actionLoading}>{actionLoading ? "Saving..." : "Save Submission"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Score Modal */}
+      <Dialog open={scoreModalOpen} onOpenChange={setScoreModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Score Submission</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>Score (0-100)</Label>
+            <Input type="number" min="0" max="100" value={teamScore} onChange={e => setTeamScore(e.target.value)} />
+            <p className="text-xs text-muted-foreground">This will advance the requirement to <strong>H-DES-4 (Judging Complete)</strong>.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScoreModalOpen(false)} disabled={actionLoading}>Cancel</Button>
+            <Button onClick={handleScoreTeam} disabled={!teamScore || actionLoading}>{actionLoading ? "Saving..." : "Save Score"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
     </div>
   );
 };
