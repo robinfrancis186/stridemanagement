@@ -124,11 +124,13 @@ const DesignathonManagement = () => {
   const [assignReqModalOpen, setAssignReqModalOpen] = useState(false);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
   const [scoreModalOpen, setScoreModalOpen] = useState(false);
+  const [updateStageModalOpen, setUpdateStageModalOpen] = useState(false);
 
   const [activeTeamId, setActiveTeamId] = useState<string | null>(null);
   const [selectedReqId, setSelectedReqId] = useState("");
   const [submissionUrl, setSubmissionUrl] = useState("");
   const [teamScore, setTeamScore] = useState("");
+  const [selectedNewState, setSelectedNewState] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
 
   const getTeamAndReq = (teamId: string) => {
@@ -269,6 +271,24 @@ const DesignathonManagement = () => {
     }
   };
 
+  const handleForceUpdateStage = async () => {
+    if (!activeTeamId || !selectedNewState) return;
+    setActionLoading(true);
+    try {
+      const { r } = getTeamAndReq(activeTeamId);
+      if (r && r.current_state !== selectedNewState) {
+        await advanceReqState(r.id, selectedNewState);
+        toast({ title: "Stage Updated" });
+        fetchData();
+      }
+      setUpdateStageModalOpen(false);
+    } catch (e: any) {
+      toast({ title: "Error", description: e.message, variant: "destructive" });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const desStates = ["H-DES-1", "H-DES-2", "H-DES-3", "H-DES-4", "H-DES-5", "H-DES-6"];
 
   if (loading) return <div className="flex h-64 items-center justify-center text-muted-foreground">Loading...</div>;
@@ -403,6 +423,9 @@ const DesignathonManagement = () => {
                                 {t.is_winner && reqForTeam?.current_state === "H-DES-5" && (
                                   <Button size="sm" variant="default" className="h-6 text-[10px] px-2" onClick={() => handleHandover(t.id)}>Complete Handover</Button>
                                 )}
+                                {t.requirement_id && (
+                                  <Button size="sm" variant="outline" className="h-6 text-[10px] px-2 border-dashed border-muted-foreground/50 text-muted-foreground" onClick={() => { setActiveTeamId(t.id); setSelectedNewState(reqForTeam?.current_state || ""); setUpdateStageModalOpen(true); }}>Change Stage</Button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -500,6 +523,31 @@ const DesignathonManagement = () => {
           <DialogFooter>
             <Button variant="outline" onClick={() => setScoreModalOpen(false)} disabled={actionLoading}>Cancel</Button>
             <Button onClick={handleScoreTeam} disabled={!teamScore || actionLoading}>{actionLoading ? "Saving..." : "Save Score"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update Stage Modal */}
+      <Dialog open={updateStageModalOpen} onOpenChange={setUpdateStageModalOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle className="font-display">Update Requirement Stage</DialogTitle></DialogHeader>
+          <div className="space-y-3">
+            <Label>New Stage</Label>
+            <select
+              className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={selectedNewState}
+              onChange={(e) => setSelectedNewState(e.target.value)}
+            >
+              <option value="" disabled>Select new stage...</option>
+              {desStates.map(state => (
+                <option key={state} value={state}>{state} - {STATES[state as StateKey]?.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground">Forcefully updates the requirement's state in the pipeline.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setUpdateStageModalOpen(false)} disabled={actionLoading}>Cancel</Button>
+            <Button onClick={handleForceUpdateStage} disabled={!selectedNewState || actionLoading}>{actionLoading ? "Updating..." : "Update Stage"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
