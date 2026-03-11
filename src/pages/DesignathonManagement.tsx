@@ -32,6 +32,7 @@ interface Team {
   members: string[];
   submission_url: string | null;
   score: number | null;
+  is_winner?: boolean;
 }
 
 interface Requirement {
@@ -68,7 +69,7 @@ const DesignathonManagement = () => {
       setEvents(evSnap.docs.map(d => ({ id: d.id, ...d.data() })) as DesignathonEvent[]);
       setTeams(tmSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]);
       const allReqs = rqSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Requirement[];
-      setRequirements(allReqs.filter(r => r.current_state.startsWith("H-DES-")));
+      setRequirements(allReqs.filter(r => r.current_state?.startsWith("H-DES-")));
     } catch (error) {
       console.error("Failed to load designathon data:", error);
     } finally {
