@@ -69,7 +69,7 @@ const DesignathonManagement = () => {
       setEvents(evSnap.docs.map(d => ({ id: d.id, ...d.data() })) as DesignathonEvent[]);
       setTeams(tmSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Team[]);
       const allReqs = rqSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Requirement[];
-      setRequirements(allReqs.filter(r => r.current_state?.startsWith("H-DES-")));
+      setRequirements(allReqs);
     } catch (error) {
       console.error("Failed to load designathon data:", error);
     } finally {
@@ -173,9 +173,9 @@ const DesignathonManagement = () => {
       const { updateDoc, doc } = await import("firebase/firestore");
       await updateDoc(doc(db, "designathon_teams", activeTeamId), { requirement_id: selectedReqId });
 
-      // Auto advance the req to H-DES-2 (Teams Registered) if it is in H-DES-1
+      // Auto advance the req to H-DES-2 (Teams Registered) if it's not already further along.
       const req = requirements.find(r => r.id === selectedReqId);
-      if (req?.current_state === "H-DES-1") {
+      if (req && !["H-DES-2", "H-DES-3", "H-DES-4", "H-DES-5", "H-DES-6"].includes(req.current_state)) {
         await advanceReqState(selectedReqId, "H-DES-2");
       }
 
@@ -482,11 +482,11 @@ const DesignathonManagement = () => {
               onChange={(e) => setSelectedReqId(e.target.value)}
             >
               <option value="" disabled>Select a requirement...</option>
-              {requirements.filter(r => r.current_state === 'H-DES-1').map(r => (
+              {requirements.filter(r => r.current_state !== 'H-DES-6').map(r => (
                 <option key={r.id} value={r.id}>{r.title} ({r.current_state})</option>
               ))}
             </select>
-            <p className="text-xs text-muted-foreground">Only requirements in <strong>H-DES-1 (Challenge Published)</strong> are shown.</p>
+            <p className="text-xs text-muted-foreground">Select any requirement to assign to this team. Doing so transitions it to <strong>H-DES-2 (Teams Registered)</strong>.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignReqModalOpen(false)} disabled={actionLoading}>Cancel</Button>
