@@ -12,7 +12,6 @@ import {
   LogOut,
   Users,
 } from "lucide-react";
-import strideLogo from "@/assets/stride-logo.svg";
 import { cn } from "@/lib/utils";
 import NotificationBell from "@/components/NotificationBell";
 import ConnectivityBanner from "@/components/ConnectivityBanner";
@@ -48,7 +47,7 @@ const AppLayout = ({ children }: { children: ReactNode }) => {
       <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-sidebar-border bg-sidebar">
         <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-5">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg overflow-hidden">
-            <img src={strideLogo} alt="STRIDE Logo" className="h-9 w-9 object-contain" />
+            <img src="/stride-logo.png" alt="STRIDE Logo" className="h-9 w-9 object-contain" />
           </div>
           <div className="flex-1">
             <h1 className="font-display text-base font-bold text-sidebar-foreground">STRIDE COE</h1>

@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { auth } from "@/lib/firebase";
 import { confirmPasswordReset } from "firebase/auth";
+import { hasSupabaseConfig, supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,16 +20,18 @@ const ResetPassword = () => {
   useEffect(() => {
     let unmounted = false;
 
-    const initializeRecoverySession = () => {
+    const initializeRecoverySession = async () => {
       try {
-        const queryParams = new URLSearchParams(window.location.search);
-        const mode = queryParams.get("mode");
-        const oobCode = queryParams.get("oobCode");
-
-        if (mode === "resetPassword" && oobCode) {
-          if (!unmounted) setIsRecoveryValid(true);
+        if (hasSupabaseConfig && supabase) {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (!unmounted) setIsRecoveryValid(Boolean(session));
         } else {
-          if (!unmounted) setIsRecoveryValid(false);
+          const queryParams = new URLSearchParams(window.location.search);
+          const mode = queryParams.get("mode");
+          const oobCode = queryParams.get("oobCode");
+          if (!unmounted) setIsRecoveryValid(mode === "resetPassword" && Boolean(oobCode));
         }
       } catch {
         if (!unmounted) setIsRecoveryValid(false);
@@ -39,7 +42,19 @@ const ResetPassword = () => {
 
     initializeRecoverySession();
 
-    return () => { unmounted = true; };
+    const subscription = hasSupabaseConfig && supabase
+      ? supabase.auth.onAuthStateChange((event, session) => {
+          if (!unmounted) {
+            setIsRecoveryValid(event === "PASSWORD_RECOVERY" || Boolean(session));
+            setCheckingLink(false);
+          }
+        }).data.subscription
+      : null;
+
+    return () => {
+      unmounted = true;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (event: FormEvent) => {
@@ -57,11 +72,15 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      const queryParams = new URLSearchParams(window.location.search);
-      const oobCode = queryParams.get("oobCode");
-      if (!oobCode) throw new Error("Missing reset code");
-
-      await confirmPasswordReset(auth, oobCode, password);
+      if (hasSupabaseConfig && supabase) {
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) throw error;
+      } else {
+        const queryParams = new URLSearchParams(window.location.search);
+        const oobCode = queryParams.get("oobCode");
+        if (!oobCode) throw new Error("Missing reset code");
+        await confirmPasswordReset(auth, oobCode, password);
+      }
 
       toast({
         title: "Password updated",

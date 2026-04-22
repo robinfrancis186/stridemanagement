@@ -1,39 +1,39 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-import { VertexAI } from '@google-cloud/vertexai';
-import { storage } from './_firebase';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { generateJson } from "./_ai.js";
+import { getSupabaseForRequest, requireRequestAuth } from "./_supabase.js";
+
+const splitStoragePath = (fullPath: string) => {
+  const [bucket, ...parts] = fullPath.split("/");
+  return { bucket, path: parts.join("/") };
+};
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  if (req.method !== "POST") {
+    return res.status(405).send("Method Not Allowed");
+  }
 
-    try {
-        const { text, base64, storagePath, fileName, fileType } = req.body;
+  try {
+    requireRequestAuth(req);
+    const { text, base64, storagePath, fileType } = req.body ?? {};
 
-        if (!text && !base64 && !storagePath) {
-            return res.status(400).json({ error: 'invalid-argument', message: 'Either text, base64, or storagePath is required' });
-        }
+    if (!text && !base64 && !storagePath) {
+      return res.status(400).json({ error: "invalid-argument", message: "Either text, base64, or storagePath is required" });
+    }
 
-        let fileBase64 = base64;
-        if (storagePath && !fileBase64) {
-            const bucket = storage.bucket();
-            const file = bucket.file(storagePath);
+    let fileBase64 = base64 as string | undefined;
+    if (storagePath && !fileBase64) {
+      const supabase = getSupabaseForRequest(req);
+      const { bucket, path } = splitStoragePath(storagePath);
+      const { data, error } = await supabase.storage.from(bucket).download(path);
+      if (error) throw error;
 
-            const [exists] = await file.exists();
-            if (!exists) {
-                return res.status(404).json({ error: 'not-found', message: `File not found in storage: ${storagePath}` });
-            }
+      const buffer = Buffer.from(await data.arrayBuffer());
+      fileBase64 = buffer.toString("base64");
 
-            const [buffer] = await file.download();
-            fileBase64 = buffer.toString('base64');
+      await supabase.storage.from(bucket).remove([path]).catch(() => undefined);
+    }
 
-            // Clean up temp file after download
-            await file.delete().catch(console.error);
-        }
-
-        const project = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID;
-        const vertexAI = new VertexAI({ project, location: "us-central1" });
-        const model = vertexAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-        const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
+    const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
 
 Extract all identifiable requirements from the document. For each requirement, extract:
 - title: concise device/requirement name
@@ -54,43 +54,28 @@ Return your response as valid JSON with this structure:
   "summary": "Brief summary of what was extracted"
 }`;
 
-        let parts: any[] = [];
-
-        if (fileBase64 && (fileType === "pdf" || fileType === "docx")) {
-            const mimeType = fileType === "pdf" ? "application/pdf" : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-            parts = [
-                { text: `${systemPrompt}\n\nExtract all requirements from this uploaded ${fileType.toUpperCase()} document.` },
-                {
-                    inlineData: {
-                        mimeType,
-                        data: fileBase64,
-                    },
-                },
-            ];
-        } else {
-            parts = [
-                { text: `${systemPrompt}\n\nExtract requirements from this document text:\n\n${(text || "").slice(0, 15000)}` },
-            ];
-        }
-
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.2,
+    const parts =
+      fileBase64 && (fileType === "pdf" || fileType === "docx")
+        ? [
+            { text: `${systemPrompt}\n\nExtract all requirements from this uploaded ${String(fileType).toUpperCase()} document.` },
+            {
+              inlineData: {
+                mimeType:
+                  fileType === "pdf"
+                    ? "application/pdf"
+                    : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                data: fileBase64,
+              },
             },
-        });
+          ]
+        : [{ text: `${systemPrompt}\n\nExtract requirements from this document text:\n\n${String(text || "").slice(0, 30000)}` }];
 
-        const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!responseText) {
-            return res.status(500).json({ error: 'internal', message: "No extraction returned from AI" });
-        }
-
-        const extracted = JSON.parse(responseText);
-        return res.status(200).json({ success: true, ...extracted });
-
-    } catch (error: any) {
-        console.error("aiParsePdf error:", error);
-        return res.status(500).json({ error: 'internal', message: error.message || "An unexpected error occurred" });
-    }
+    const extracted = await generateJson<Record<string, any>>(parts, { temperature: 0.2 });
+    return res.status(200).json({ success: true, ...extracted });
+  } catch (error: any) {
+    console.error("aiParsePdf error:", error);
+    const message = error?.message || "An unexpected error occurred";
+    const status = message === "Authentication is required." ? 401 : 500;
+    return res.status(status).json({ error: "internal", message });
+  }
 }

@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
-import { db, functions, storage } from "@/lib/firebase";
+import { db, storage } from "@/lib/firebase";
 import { collection, addDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -9,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { canUseBrowserGemini, invokeAiApi } from "@/lib/ai-client";
 import { FileSearch, Upload, Loader2, Check, Plus, CheckCheck } from "lucide-react";
 
 const AIPDFUploader = () => {
@@ -23,7 +23,6 @@ const AIPDFUploader = () => {
 
   const MAX_FILE_SIZE_MB = 50;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
-  const DIRECT_UPLOAD_THRESHOLD = 5 * 1024 * 1024; // 5MB
 
   const parsePrice = (val: any) => {
     if (val === null || val === undefined) return null;
@@ -52,10 +51,12 @@ const AIPDFUploader = () => {
       const ext = file.name.split(".").pop()?.toLowerCase();
       setStatusText("Parsing document with AI...");
 
-      const { getGeminiModel } = await import("@/lib/gemini");
-      const model = getGeminiModel();
+      let data: any;
+      if (canUseBrowserGemini) {
+        const { getGeminiModel } = await import("@/lib/gemini");
+        const model = getGeminiModel();
 
-      const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
+        const systemPrompt = `You are an expert at extracting structured requirement data from documents for STRIDE COE assistive technology pipeline.
 
 Extract all identifiable requirements from the document. For each requirement, extract:
 - title: concise device/requirement name
@@ -76,30 +77,52 @@ Return your response as valid JSON with this structure:
   "summary": "Brief summary of what was extracted"
 }`;
 
-      let parts = [];
-      if (ext === "pdf") {
-        const arrayBuffer = await file.arrayBuffer();
-        const base64 = btoa(new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), ''));
-        parts = [
-          { text: `${systemPrompt}\n\nExtract all requirements from this uploaded PDF document.` },
-          { inlineData: { data: base64, mimeType: "application/pdf" } }
-        ];
+        const parts =
+          ext === "pdf"
+            ? [
+                { text: `${systemPrompt}\n\nExtract all requirements from this uploaded PDF document.` },
+                {
+                  inlineData: {
+                    data: btoa(
+                      new Uint8Array(await file.arrayBuffer()).reduce(
+                        (binary, byte) => binary + String.fromCharCode(byte),
+                        "",
+                      ),
+                    ),
+                    mimeType: "application/pdf",
+                  },
+                },
+              ]
+            : [{ text: `${systemPrompt}\n\nExtract requirements from this document text:\n\n${(await file.text()).slice(0, 30000)}` }];
+
+        const result = await model.generateContent({
+          contents: [{ role: "user", parts }],
+          generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+        });
+
+        const responseText = result.response.text();
+        if (!responseText) throw new Error("No extraction returned from AI");
+        data = JSON.parse(responseText);
+      } else if (ext === "pdf" || ext === "docx") {
+        setStatusText("Uploading document securely...");
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+        const fullPath = `requirement-files/ai-imports/${crypto.randomUUID()}-${safeName}`;
+        const fileRef = storageRef(storage, fullPath);
+        await uploadBytes(fileRef, file);
+
+        setStatusText("Parsing document with AI...");
+        data = await invokeAiApi("/api/aiParsePdf", {
+          storagePath: fullPath,
+          fileType: ext,
+        });
       } else {
         const text = await file.text();
-        parts = [
-          { text: `${systemPrompt}\n\nExtract requirements from this document text:\n\n${text.slice(0, 30000)}` },
-        ];
+        data = await invokeAiApi("/api/aiParsePdf", {
+          text,
+          fileType: ext,
+        });
       }
 
-      const result = await model.generateContent({
-        contents: [{ role: "user", parts }],
-        generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
-      });
-
-      const responseText = result.response.text();
-      if (!responseText) throw new Error("No extraction returned from AI");
-
-      const data = JSON.parse(responseText);
       setExtracted(data);
       toast({ title: "Extraction Complete", description: data.summary });
     } catch (e: any) {

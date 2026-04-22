@@ -42,9 +42,8 @@ const Auth = () => {
     try {
       if (mode === "forgot") {
         // Explicitly set ActionCodeSettings without iOS/Android properties 
-        // to prevent Firebase from trying to use deprecated Dynamic Links.
         const actionCodeSettings = {
-          url: window.location.origin + '/login',
+          url: window.location.origin + "/reset-password",
           handleCodeInApp: false,
         };
         await withAuthRecovery(() => sendPasswordResetEmail(auth, email, actionCodeSettings));
@@ -125,7 +124,11 @@ const Auth = () => {
         "auth/wrong-password": "Incorrect password. Please try again.",
         "auth/invalid-credential": "Invalid email or password. Please try again.",
         "auth/too-many-requests": "Too many failed attempts. Please wait a moment and try again.",
-        "auth/configuration-not-found": "Auth is not configured. Please enable Email/Password in Firebase Console.",
+        "auth/configuration-not-found": "Auth is not configured. Please enable Email/Password in Supabase Auth.",
+        invalid_credentials: "Invalid email or password. Please try again.",
+        email_address_invalid: "Please enter a valid email address.",
+        email_exists: "An account with this email already exists. Try signing in instead.",
+        weak_password: "Password must be at least 6 characters.",
       };
 
       toast({
@@ -144,7 +147,7 @@ const Auth = () => {
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="mb-8 text-center">
-          <img src="/favicon.svg" alt="STRIDE Logo" className="mx-auto mb-4 h-16 w-16" />
+          <img src="/stride-logo.png" alt="STRIDE Logo" className="mx-auto mb-4 h-20 w-auto object-contain" />
           <h1 className="font-display text-3xl font-bold tracking-tight text-foreground">
             STRIDE COE
           </h1>
@@ -247,4 +250,3 @@ const Auth = () => {
 };
 
 export default Auth;
-

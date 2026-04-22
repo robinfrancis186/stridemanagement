@@ -24,7 +24,12 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "firebase/app": ["./src/shims/firebase/app.ts"],
+      "firebase/auth": ["./src/shims/firebase/auth.ts"],
+      "firebase/firestore": ["./src/shims/firebase/firestore.ts"],
+      "firebase/storage": ["./src/shims/firebase/storage.ts"],
+      "firebase/functions": ["./src/shims/firebase/functions.ts"]
     }
   },
   "include": ["src"]

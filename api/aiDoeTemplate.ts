@@ -1,23 +1,30 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
-import { VertexAI } from '@google-cloud/vertexai';
-import { db } from './_firebase';
+import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { generateJson } from "./_ai.js";
+import { getTable } from "./_supabase.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    if (req.method !== 'POST') return res.status(405).send('Method Not Allowed');
+  if (req.method !== "POST") {
+    return res.status(405).send("Method Not Allowed");
+  }
 
-    try {
-        const { requirementId } = req.body;
-        if (!requirementId) return res.status(400).json({ error: 'requirementId is required' });
+  try {
+    const { requirementId } = req.body ?? {};
+    if (!requirementId) {
+      return res.status(400).json({ error: "requirementId is required" });
+    }
 
-        const reqDoc = await db.collection("requirements").doc(requirementId).get();
+    const requirements = getTable(req, "requirements");
+    const { data: requirement, error: requirementError } = await requirements
+      .select("*")
+      .eq("id", requirementId)
+      .maybeSingle();
 
-        if (!reqDoc.exists) {
-            return res.status(404).json({ error: 'Requirement not found' });
-        }
+    if (requirementError) throw requirementError;
+    if (!requirement) {
+      return res.status(404).json({ error: "Requirement not found" });
+    }
 
-        const requirement = reqDoc.data()!;
-
-        const prompt = `You are an expert in Design of Experiments (DoE) for assistive technology devices at STRIDE COE.
+    const prompt = `You are an expert in Design of Experiments (DoE) for assistive technology devices at STRIDE COE.
 
 Generate a comprehensive DoE template for:
 Title: ${requirement.title}
@@ -41,40 +48,33 @@ Return JSON with:
   "estimated_duration_weeks": number
 }`;
 
-        const project = process.env.GCLOUD_PROJECT || process.env.FIREBASE_PROJECT_ID;
-        const vertexAI = new VertexAI({ project, location: "us-central1" });
-        const model = vertexAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const template = await generateJson<Record<string, any>>([{ text: prompt }], { temperature: 0.3 });
 
-        const result = await model.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
-            generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.3,
-            },
-        });
+    const { error: insertError } = await getTable(req, "doe_records").insert({
+      requirement_id: requirementId,
+      testing_protocol: template.testing_protocol,
+      sample_size: template.sample_size,
+      sample_size_justification: template.sample_size_justification,
+      baseline_data: { metrics: template.baseline_metrics || [] },
+      beneficiary_profiles: template.beneficiary_criteria || [],
+      pre_test_data: { measures: template.pre_test_measures || [] },
+      post_test_data: { measures: template.post_test_measures || [] },
+      improvement_metrics: template.improvement_metrics || [],
+      statistical_analysis: {
+        methods: template.statistical_methods || [],
+        estimated_duration_weeks: template.estimated_duration_weeks,
+      },
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
-        const responseText = result.response.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!responseText) {
-            return res.status(500).json({ error: 'No template returned from AI' });
-        }
+    if (insertError) throw insertError;
 
-        const template = JSON.parse(responseText);
-
-        await db.collection("doe_records").add({
-            requirement_id: requirementId,
-            testing_protocol: template.testing_protocol,
-            sample_size: template.sample_size,
-            baseline_data: { metrics: template.baseline_metrics },
-            beneficiary_profiles: template.beneficiary_criteria,
-            pre_test_data: { measures: template.pre_test_measures },
-            post_test_data: { measures: template.post_test_measures },
-            improvement_metrics: template.improvement_metrics,
-            statistical_analysis: { methods: template.statistical_methods, estimated_duration_weeks: template.estimated_duration_weeks },
-        });
-
-        return res.status(200).json({ success: true, template });
-    } catch (error: any) {
-        console.error("aiDoeTemplate error:", error);
-        return res.status(500).json({ error: error.message || "Unknown error" });
-    }
+    return res.status(200).json({ success: true, template });
+  } catch (error: any) {
+    console.error("aiDoeTemplate error:", error);
+    const message = error?.message || "Unknown error";
+    const status = message === "Authentication is required." ? 401 : 500;
+    return res.status(status).json({ error: message });
+  }
 }

@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { STATES, type StateKey } from "@/lib/constants";
 import { toast } from "@/hooks/use-toast";
+import { canUseBrowserGemini, invokeAiApi } from "@/lib/ai-client";
 import { format } from "date-fns";
 import { Calendar, Plus, Trophy, ArrowRight, Upload, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 
@@ -177,8 +178,6 @@ const DesignathonManagement = () => {
       if (!csvData || csvData.length < 10) throw new Error("Excel file appears to be empty.");
 
       setStatusText("Parsing with AI...");
-      const { getGeminiModel } = await import("@/lib/gemini");
-      const model = getGeminiModel();
 
       const event = events.find(e => e.id === activeEventId);
       if (!event) throw new Error("Event not found");
@@ -217,7 +216,16 @@ const DesignathonManagement = () => {
       }
 
       if (uploadAction === "REGISTRATION") {
-        const prompt = `You are an AI assistant helping to parse Designathon Team Registration data from a raw, noisy CSV file.
+        setStatusText("Saving Teams...");
+        const parsed = canUseBrowserGemini
+          ? await (async () => {
+              const { getGeminiModel } = await import("@/lib/gemini");
+              const model = getGeminiModel();
+              const result = await model.generateContent({
+                contents: [{
+                  role: "user",
+                  parts: [{
+                    text: `You are an AI assistant helping to parse Designathon Team Registration data from a raw, noisy CSV file.
 Extract all the teams mentioned. Expected output should be valid JSON in this exact structure:
 {
   "teams": [
@@ -227,15 +235,14 @@ Extract all the teams mentioned. Expected output should be valid JSON in this ex
 Do not include any other markdown or text outside the JSON. Extract as many teams as you can find.
 
 Raw CSV Data:
-${csvData.slice(0, 15000)}`;
-
-        const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
-        });
-
-        setStatusText("Saving Teams...");
-        const parsed = JSON.parse(result.response.text());
+${csvData.slice(0, 15000)}`,
+                  }],
+                }],
+                generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
+              });
+              return JSON.parse(result.response.text());
+            })()
+          : await invokeAiApi<{ teams?: Array<{ team_name?: string; members?: string[] }> }>("/api/aiDesignathonRegistration", { csvData });
         const extractedTeams = parsed.teams || [];
 
         if (extractedTeams.length === 0) throw new Error("AI could not find any teams in the file.");
@@ -260,7 +267,16 @@ ${csvData.slice(0, 15000)}`;
         toast({ title: `Successfully registered ${extractedTeams.length} teams.` });
 
       } else if (uploadAction === "JUDGING") {
-        const prompt = `You are an AI parsing Judging/Scores data for a Designathon from a raw CSV file.
+        setStatusText("Updating Scores...");
+        const parsed = canUseBrowserGemini
+          ? await (async () => {
+              const { getGeminiModel } = await import("@/lib/gemini");
+              const model = getGeminiModel();
+              const result = await model.generateContent({
+                contents: [{
+                  role: "user",
+                  parts: [{
+                    text: `You are an AI parsing Judging/Scores data for a Designathon from a raw CSV file.
 Extract team names and their final numerical scores. Expected output format:
 {
   "scores": [
@@ -269,15 +285,14 @@ Extract team names and their final numerical scores. Expected output format:
 }
 
 Raw CSV Data:
-${csvData.slice(0, 15000)}`;
-
-        const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
-        });
-
-        setStatusText("Updating Scores...");
-        const parsed = JSON.parse(result.response.text());
+${csvData.slice(0, 15000)}`,
+                  }],
+                }],
+                generationConfig: { responseMimeType: "application/json", temperature: 0.1 },
+              });
+              return JSON.parse(result.response.text());
+            })()
+          : await invokeAiApi<{ scores?: Array<{ team_name?: string; score?: number }> }>("/api/aiDesignathonJudging", { csvData });
         const extractedScores = parsed.scores || [];
 
         const eventTeams = teams.filter(t => t.event_id === activeEventId);
