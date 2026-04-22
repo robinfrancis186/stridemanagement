@@ -1,10 +1,15 @@
 import type { VercelRequest } from "@vercel/node";
 import { createClient } from "@supabase/supabase-js";
+import {
+  resolveSupabasePublishableKey,
+  resolveSupabaseUrl,
+} from "../src/lib/runtime-config";
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL?.trim();
-const supabaseKey =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim() ??
-  process.env.VITE_SUPABASE_ANON_KEY?.trim();
+const supabaseUrl = resolveSupabaseUrl(process.env.VITE_SUPABASE_URL);
+const supabaseKey = resolveSupabasePublishableKey(
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  process.env.VITE_SUPABASE_ANON_KEY,
+);
 
 const getBearerToken = (req: VercelRequest) => {
   const header = req.headers.authorization;
