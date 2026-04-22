@@ -31,12 +31,22 @@ export const invokeAiApi = async <T>(path: string, payload: Record<string, unkno
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
+    const message =
       typeof data?.message === "string"
         ? data.message
         : typeof data?.error === "string"
           ? data.error
-          : `Request failed with status ${response.status}`,
+          : `Request failed with status ${response.status}`;
+
+    if (
+      response.status === 503 ||
+      /service unavailable|high demand|temporar(?:y|ily)|overload|rate limit/i.test(message)
+    ) {
+      throw new Error("AI service is currently busy. Please try again in a moment.");
+    }
+
+    throw new Error(
+      message,
     );
   }
 
