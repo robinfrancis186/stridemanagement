@@ -14,7 +14,7 @@ interface LocalStore {
   users: Record<string, LocalUserRecord>;
   sessionUserId: string | null;
   collections: Record<string, Record<string, Record<string, JsonValue>>>;
-  storage: Record<string, { name: string; type: string; size: number; dataUrl: string }>;
+  storage: Record<string, { name: string; type: string; size: number }>;
   passwordResets: Record<string, string>;
 }
 
@@ -319,12 +319,29 @@ const loadStore = (): LocalStore => {
 
   try {
     const parsed = JSON.parse(raw) as LocalStore;
+    const sanitizedStorage = Object.fromEntries(
+      Object.entries(parsed.storage ?? {}).map(([path, entry]) => [
+        path,
+        {
+          name: String((entry as { name?: string }).name ?? path.split("/").pop() ?? path),
+          type: String((entry as { type?: string }).type ?? ""),
+          size: Number((entry as { size?: number }).size ?? 0),
+        },
+      ]),
+    );
+    const sanitized = {
+      ...parsed,
+      storage: sanitizedStorage,
+    } satisfies LocalStore;
     if (parsed.version !== STORE_VERSION) {
       const store = seededStore();
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
       return store;
     }
-    return parsed;
+    if (JSON.stringify(parsed.storage ?? {}) !== JSON.stringify(sanitizedStorage)) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
+    }
+    return sanitized;
   } catch {
     const store = seededStore();
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
@@ -343,7 +360,20 @@ export const getStore = (): LocalStore => {
 
 export const saveStore = (nextStore: LocalStore) => {
   storeCache = nextStore;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextStore));
+  } catch (error) {
+    if (error instanceof DOMException && (error.name === "QuotaExceededError" || error.name === "NS_ERROR_DOM_QUOTA_REACHED")) {
+      const trimmedStore = {
+        ...nextStore,
+        storage: {},
+      };
+      storeCache = trimmedStore;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmedStore));
+      return;
+    }
+    throw error;
+  }
 };
 
 export const readStore = () => clone(getStore());
