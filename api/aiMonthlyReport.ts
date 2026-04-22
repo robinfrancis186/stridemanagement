@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { generateText } from "./_ai.js";
+import { generateText, getErrorStatus } from "./_ai.js";
 import { getTable } from "./_supabase.js";
 
 const getMonthRange = (month: string) => {
@@ -114,7 +114,7 @@ ${JSON.stringify(dataForAI, null, 2)}`;
   } catch (error: any) {
     console.error("aiMonthlyReport error:", error);
     const message = error?.message || "Unknown error";
-    const status = message === "Authentication is required." ? 401 : 500;
+    const status = message === "Authentication is required." ? 401 : getErrorStatus(error);
     return res.status(status).json({ error: message });
   }
 }

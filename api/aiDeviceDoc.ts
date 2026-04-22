@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { generateText } from "./_ai.js";
+import { generateText, getErrorStatus } from "./_ai.js";
 import { getTable } from "./_supabase.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -95,7 +95,7 @@ Generate sections: Cover Page, Executive Summary, Device Specification, Market A
   } catch (error: any) {
     console.error("aiDeviceDoc error:", error);
     const message = error?.message || "Unknown error";
-    const status = message === "Authentication is required." ? 401 : 500;
+    const status = message === "Authentication is required." ? 401 : getErrorStatus(error);
     return res.status(status).json({ error: message });
   }
 }

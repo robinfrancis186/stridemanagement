@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { generateJson } from "./_ai.js";
+import { generateJson, getErrorStatus } from "./_ai.js";
 import { getTable } from "./_supabase.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -46,7 +46,7 @@ Return empty duplicates array if no duplicates found.`;
   } catch (error: any) {
     console.error("aiDuplicateCheck error:", error);
     const message = error?.message || "Unknown error";
-    const status = message === "Authentication is required." ? 401 : 500;
+    const status = message === "Authentication is required." ? 401 : getErrorStatus(error);
     return res.status(status).json({ error: message });
   }
 }

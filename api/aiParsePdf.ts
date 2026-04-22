@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { generateJson } from "./_ai.js";
+import { generateJson, getErrorStatus } from "./_ai.js";
 import { getSupabaseForRequest, requireRequestAuth } from "./_supabase.js";
 
 const splitStoragePath = (fullPath: string) => {
@@ -75,7 +75,7 @@ Return your response as valid JSON with this structure:
   } catch (error: any) {
     console.error("aiParsePdf error:", error);
     const message = error?.message || "An unexpected error occurred";
-    const status = message === "Authentication is required." ? 401 : 500;
+    const status = message === "Authentication is required." ? 401 : getErrorStatus(error);
     return res.status(status).json({ error: "internal", message });
   }
 }
