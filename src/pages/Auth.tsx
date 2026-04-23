@@ -22,11 +22,14 @@ const Auth = () => {
     await signOut(auth).catch(() => { });
   };
 
-  const withAuthRecovery = async <T,>(request: () => Promise<T>): Promise<T> => {
+  const withAuthRecovery = async <T,>(
+    request: () => Promise<T>,
+    options?: { retryOnFetchFailure?: boolean },
+  ): Promise<T> => {
     try {
       return await request();
     } catch (error: any) {
-      if (error?.message === "Failed to fetch") {
+      if (options?.retryOnFetchFailure !== false && error?.message === "Failed to fetch") {
         await recoverFromFetchFailure();
         await new Promise((resolve) => setTimeout(resolve, 200));
         return await request();
@@ -46,7 +49,9 @@ const Auth = () => {
           url: window.location.origin + "/reset-password",
           handleCodeInApp: false,
         };
-        await withAuthRecovery(() => sendPasswordResetEmail(auth, email, actionCodeSettings));
+        await withAuthRecovery(() => sendPasswordResetEmail(auth, email, actionCodeSettings), {
+          retryOnFetchFailure: false,
+        });
 
         toast({
           title: "Check your email",
@@ -57,7 +62,9 @@ const Auth = () => {
         await withAuthRecovery(() => signInWithEmailAndPassword(auth, email, password));
         navigate("/");
       } else {
-        const userCredential = await withAuthRecovery(() => createUserWithEmailAndPassword(auth, email, password));
+        const userCredential = await withAuthRecovery(() => createUserWithEmailAndPassword(auth, email, password), {
+          retryOnFetchFailure: false,
+        });
         const user = userCredential.user;
 
         if (!user) {
@@ -124,6 +131,10 @@ const Auth = () => {
         "auth/wrong-password": "Incorrect password. Please try again.",
         "auth/invalid-credential": "Invalid email or password. Please try again.",
         "auth/too-many-requests": "Too many failed attempts. Please wait a moment and try again.",
+        "auth/email-rate-limit-exceeded":
+          mode === "forgot"
+            ? "Password reset email is temporarily rate limited. Supabase's built-in mailer is limited, so wait and try again later."
+            : "Account emails are temporarily rate limited. Supabase's built-in mailer is limited, so wait and try again later.",
         "auth/configuration-not-found": "Auth is not configured. Please enable Email/Password in Supabase Auth.",
         invalid_credentials: "Invalid email or password. Please try again.",
         email_address_invalid: "Please enter a valid email address.",

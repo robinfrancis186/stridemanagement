@@ -20,6 +20,73 @@ export interface Auth {
 
 const authInstance: Auth = { app: null };
 
+const toAuthError = (message: string, code: string, original?: unknown) => {
+  const error = new Error(message) as Error & {
+    code?: string;
+    status?: number;
+    original?: unknown;
+  };
+  error.code = code;
+  if (typeof original === "object" && original && "status" in original && typeof original.status === "number") {
+    error.status = original.status;
+  }
+  error.original = original;
+  return error;
+};
+
+const normalizeSupabaseAuthError = (
+  error: unknown,
+  operation: "signin" | "signup" | "reset-password" | "update-password",
+) => {
+  if (!(error instanceof Error)) {
+    return error;
+  }
+
+  const message = error.message || "";
+  const normalizedMessage = message.toLowerCase();
+  const code =
+    typeof (error as Error & { code?: string }).code === "string"
+      ? (error as Error & { code?: string }).code
+      : "";
+  const normalizedCode = code.toLowerCase();
+  const status =
+    typeof (error as Error & { status?: number }).status === "number"
+      ? (error as Error & { status?: number }).status
+      : null;
+
+  const isEmailRateLimit =
+    operation !== "signin" &&
+    (status === 429 ||
+      /email rate limit exceeded|over_email_send_rate_limit|email sending rate limit/i.test(message) ||
+      normalizedCode.includes("over_email_send_rate_limit"));
+
+  if (isEmailRateLimit) {
+    return toAuthError("Email sending is temporarily rate limited.", "auth/email-rate-limit-exceeded", error);
+  }
+
+  if (status === 429 || /too many requests|rate limit/i.test(normalizedMessage)) {
+    return toAuthError("Too many requests.", "auth/too-many-requests", error);
+  }
+
+  if (normalizedCode === "email_exists" || normalizedCode === "user_already_exists") {
+    return toAuthError("An account with this email already exists.", "auth/email-already-in-use", error);
+  }
+
+  if (normalizedCode === "email_address_invalid") {
+    return toAuthError("Please enter a valid email address.", "auth/invalid-email", error);
+  }
+
+  if (normalizedCode === "weak_password") {
+    return toAuthError("Password must be at least 6 characters.", "auth/weak-password", error);
+  }
+
+  if (normalizedCode === "invalid_credentials") {
+    return toAuthError("Invalid email or password.", "auth/invalid-credential", error);
+  }
+
+  return error;
+};
+
 const toUser = (
   record:
     | {
@@ -92,7 +159,7 @@ export const signInWithEmailAndPassword = async (auth: Auth, email: string, pass
 
   if (hasSupabaseConfig && supabase) {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+    if (error) throw normalizeSupabaseAuthError(error, "signin");
     return { user: toUser(data.user)! };
   }
 
@@ -127,7 +194,7 @@ export const createUserWithEmailAndPassword = async (auth: Auth, email: string, 
         emailRedirectTo: getSiteUrl("/auth"),
       },
     });
-    if (error) throw error;
+    if (error) throw normalizeSupabaseAuthError(error, "signup");
     return { user: toUser(data.user)! };
   }
 
@@ -164,7 +231,7 @@ export const sendPasswordResetEmail = async (
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: actionCodeSettings?.url || getSiteUrl("/reset-password"),
     });
-    if (error) throw error;
+    if (error) throw normalizeSupabaseAuthError(error, "reset-password");
     return;
   }
 
@@ -185,7 +252,7 @@ export const confirmPasswordReset = async (auth: Auth, code: string, newPassword
 
   if (hasSupabaseConfig && supabase) {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) throw error;
+    if (error) throw normalizeSupabaseAuthError(error, "update-password");
     return;
   }
 
